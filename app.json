@@ -27,7 +27,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1a1a2e"
       },
-      "package": "com.xatpy.sendtox4",
+      "package": "com.example.sendtox4",
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
