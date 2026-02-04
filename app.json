@@ -1,0 +1,67 @@
+{
+  "expo": {
+    "name": "Send to X4",
+    "slug": "send-to-x4",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "backgroundColor": "#1a1a2e",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1a1a2e"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.example.sendtox4",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1a1a2e"
+      },
+      "package": "com.xatpy.sendtox4",
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "scheme": "sendtox4",
+    "plugins": [
+      [
+        "expo-share-intent",
+        {
+          "ios": {
+            "activationRules": {
+              "urls": 1
+            },
+            "group": "group.com.example.sendtox4"
+          },
+          "android": {
+            "intentFilters": [
+              {
+                "action": "android.intent.action.SEND",
+                "data": {
+                  "mimeType": "text/plain"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "YOUR_EAS_PROJECT_ID"
+      }
+    }
+  }
+}
