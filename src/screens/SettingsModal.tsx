@@ -7,8 +7,8 @@ import {
     TouchableOpacity,
     StyleSheet,
     ScrollView,
-    SafeAreaView,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Settings } from '../types';
 import { getDefaultIp } from '../services/settings';
 
@@ -25,6 +25,7 @@ export function SettingsModal({
     settings,
     onSave,
 }: SettingsModalProps) {
+    const insets = useSafeAreaInsets();
     const [localSettings, setLocalSettings] = useState<Settings>(settings);
 
     useEffect(() => {
@@ -69,17 +70,24 @@ export function SettingsModal({
             visible={visible}
             animationType="slide"
             presentationStyle="pageSheet"
+            statusBarTranslucent
             onRequestClose={onClose}
         >
-            <SafeAreaView style={styles.container}>
-                <View style={styles.header}>
+            <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+                <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) }]}>
                     <Text style={styles.title}>Settings</Text>
                     <TouchableOpacity onPress={handleSave} style={styles.closeButton}>
                         <Text style={styles.closeButtonText}>Done</Text>
                     </TouchableOpacity>
                 </View>
 
-                <ScrollView style={styles.content}>
+                <ScrollView
+                    style={styles.content}
+                    contentContainerStyle={[
+                        styles.contentContainer,
+                        { paddingBottom: 16 + insets.bottom },
+                    ]}
+                >
                     {/* Firmware Type */}
                     <Text style={styles.sectionTitle}>Firmware Type</Text>
                     <View style={styles.segmentedControl}>
@@ -117,16 +125,16 @@ export function SettingsModal({
                         </TouchableOpacity>
                     </View>
 
-                    {/* IP Address */}
-                    <Text style={styles.sectionTitle}>Device IP Address</Text>
+                    {/* Device Host/IP */}
+                    <Text style={styles.sectionTitle}>Device Host or IP</Text>
                     <View style={styles.inputRow}>
                         <TextInput
                             style={styles.ipInput}
                             value={getCurrentIp()}
                             onChangeText={handleIpChange}
-                            placeholder="192.168.x.x"
+                            placeholder="crosspoint.local or 192.168.x.x"
                             placeholderTextColor="#666"
-                            keyboardType="decimal-pad"
+                            keyboardType="default"
                             autoCapitalize="none"
                             autoCorrect={false}
                         />
@@ -152,6 +160,15 @@ export function SettingsModal({
                         <Text style={styles.aboutText}>Version 1.0.0</Text>
                     </View>
                 </ScrollView>
+
+                <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+                    <TouchableOpacity style={styles.footerButtonSecondary} onPress={onClose}>
+                        <Text style={styles.footerButtonSecondaryText}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.footerButtonPrimary} onPress={handleSave}>
+                        <Text style={styles.footerButtonPrimaryText}>Save</Text>
+                    </TouchableOpacity>
+                </View>
             </SafeAreaView>
         </Modal>
     );
@@ -186,7 +203,10 @@ const styles = StyleSheet.create({
     },
     content: {
         flex: 1,
-        padding: 20,
+        paddingHorizontal: 20,
+    },
+    contentContainer: {
+        paddingVertical: 20,
     },
     sectionTitle: {
         fontSize: 14,
@@ -267,5 +287,40 @@ const styles = StyleSheet.create({
         color: '#a0a0b0',
         fontSize: 14,
         lineHeight: 20,
+    },
+    footer: {
+        flexDirection: 'row',
+        gap: 10,
+        paddingHorizontal: 20,
+        paddingTop: 10,
+        borderTopWidth: 1,
+        borderTopColor: '#2d2d44',
+        backgroundColor: '#1a1a2e',
+    },
+    footerButtonPrimary: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#6c63ff',
+        borderRadius: 12,
+        paddingVertical: 14,
+    },
+    footerButtonPrimaryText: {
+        color: '#fff',
+        fontSize: 15,
+        fontWeight: '700',
+    },
+    footerButtonSecondary: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#2d2d44',
+        borderRadius: 12,
+        paddingVertical: 14,
+    },
+    footerButtonSecondaryText: {
+        color: '#a0a0b0',
+        fontSize: 15,
+        fontWeight: '600',
     },
 });

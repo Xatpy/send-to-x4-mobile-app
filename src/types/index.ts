@@ -60,3 +60,20 @@ export interface RemoteFile {
   date?: string; // Parsed or raw date
   timestamp?: number; // Used for sorting
 }
+
+// A queued article reference (saved for later batch sending)
+export interface QueuedArticle {
+  id: string;            // unique ID (timestamp-based)
+  url: string;           // the article URL
+  title?: string;        // optional display title (from og:title or domain)
+  addedAt: number;       // timestamp when added to queue
+  status: 'pending' | 'processing' | 'failed';
+  errorMessage?: string; // populated when status === 'failed'
+}
+
+// Result of a batch dump operation
+export interface DumpResult {
+  total: number;
+  succeeded: number;
+  failed: { id: string; url: string; title?: string; error: string }[];
+}

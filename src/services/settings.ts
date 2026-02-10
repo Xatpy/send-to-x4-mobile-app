@@ -4,7 +4,7 @@ import type { Settings } from '../types';
 const DEFAULTS: Settings = {
     firmwareType: 'crosspoint',
     stockIp: '192.168.3.3',
-    crossPointIp: '192.168.1.224',
+    crossPointIp: 'crosspoint.local',
 };
 
 const STORAGE_KEY = '@send-to-x4/settings';
@@ -31,6 +31,8 @@ export async function saveSettings(settings: Partial<Settings>): Promise<void> {
     try {
         const current = await getSettings();
         const updated = { ...current, ...settings };
+        updated.stockIp = normalizeDeviceHost(updated.stockIp);
+        updated.crossPointIp = normalizeDeviceHost(updated.crossPointIp);
         await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
     } catch (error) {
         console.warn('Failed to save settings:', error);
@@ -42,9 +44,10 @@ export async function saveSettings(settings: Partial<Settings>): Promise<void> {
  * Get the current device IP based on firmware type
  */
 export function getCurrentIp(settings: Settings): string {
-    return settings.firmwareType === 'crosspoint'
+    const target = settings.firmwareType === 'crosspoint'
         ? settings.crossPointIp
         : settings.stockIp;
+    return normalizeDeviceHost(target);
 }
 
 /**
@@ -52,4 +55,24 @@ export function getCurrentIp(settings: Settings): string {
  */
 export function getDefaultIp(firmwareType: 'stock' | 'crosspoint'): string {
     return firmwareType === 'crosspoint' ? DEFAULTS.crossPointIp : DEFAULTS.stockIp;
+}
+
+/**
+ * Normalize user-provided device target (IP or hostname).
+ * Accepts bare hosts like "crosspoint.local" and strips accidental schemes/paths.
+ */
+export function normalizeDeviceHost(value: string): string {
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+
+    let host = trimmed.replace(/^https?:\/\//i, '');
+    host = host.split('/')[0];
+    return host;
+}
+
+/**
+ * Build the base URL for device API calls.
+ */
+export function getDeviceBaseUrl(value: string): string {
+    return `http://${normalizeDeviceHost(value)}`;
 }

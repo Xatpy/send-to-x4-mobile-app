@@ -1,5 +1,6 @@
 import { File, Paths } from 'expo-file-system';
 import type { UploadResult, RemoteFile } from '../types';
+import { getDeviceBaseUrl } from './settings';
 
 // Helper to parse date from filename "Author - YYYY-MM-DD - Title.epub"
 function parseDateFromFilename(filename: string): number {
@@ -33,6 +34,7 @@ export async function uploadToStock(
     filename: string
 ): Promise<UploadResult> {
     let tempFile: File | null = null;
+    const baseUrl = getDeviceBaseUrl(ip);
 
     try {
         // 1. Ensure folder exists
@@ -59,7 +61,7 @@ export async function uploadToStock(
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
-        const response = await fetch(`http://${ip}/edit`, {
+        const response = await fetch(`${baseUrl}/edit`, {
             method: 'POST',
             body: formData,
             headers: {
@@ -99,11 +101,12 @@ export async function uploadToStock(
  */
 async function ensureFolderExistsStock(ip: string, folder: string): Promise<boolean> {
     try {
+        const baseUrl = getDeviceBaseUrl(ip);
         // Check if folder exists
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 10000);
 
-        const listRes = await fetch(`http://${ip}/list?dir=/`, {
+        const listRes = await fetch(`${baseUrl}/list?dir=/`, {
             signal: controller.signal,
         });
 
@@ -125,7 +128,7 @@ async function ensureFolderExistsStock(ip: string, folder: string): Promise<bool
         const createController = new AbortController();
         const createTimeout = setTimeout(() => createController.abort(), 10000);
 
-        const createRes = await fetch(`http://${ip}/edit`, {
+        const createRes = await fetch(`${baseUrl}/edit`, {
             method: 'PUT',
             body: formData,
             signal: createController.signal,
@@ -144,10 +147,11 @@ async function ensureFolderExistsStock(ip: string, folder: string): Promise<bool
  */
 export async function checkStockConnection(ip: string): Promise<boolean> {
     try {
+        const baseUrl = getDeviceBaseUrl(ip);
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 5000);
 
-        const response = await fetch(`http://${ip}/list?dir=/`, {
+        const response = await fetch(`${baseUrl}/list?dir=/`, {
             signal: controller.signal,
         });
 
@@ -182,6 +186,7 @@ function handleUploadError(error: unknown): UploadResult {
  */
 export async function listStockFiles(ip: string): Promise<RemoteFile[]> {
     try {
+        const baseUrl = getDeviceBaseUrl(ip);
         // Ensure folder exists first (otherwise list might fail or return 404)
         const folderReady = await ensureFolderExistsStock(ip, TARGET_FOLDER);
         if (!folderReady) return [];
@@ -189,7 +194,7 @@ export async function listStockFiles(ip: string): Promise<RemoteFile[]> {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 10000);
 
-        const response = await fetch(`http://${ip}/list?dir=/${TARGET_FOLDER}/`, {
+        const response = await fetch(`${baseUrl}/list?dir=/${TARGET_FOLDER}/`, {
             signal: controller.signal,
         });
 
@@ -222,6 +227,7 @@ export async function listStockFiles(ip: string): Promise<RemoteFile[]> {
  */
 export async function deleteStockFile(ip: string, filename: string): Promise<boolean> {
     try {
+        const baseUrl = getDeviceBaseUrl(ip);
         const path = `/${TARGET_FOLDER}/${filename}`;
 
         const controller = new AbortController();
@@ -229,7 +235,7 @@ export async function deleteStockFile(ip: string, filename: string): Promise<boo
 
         // Stock firmware delete: DELETE /edit with body path=...
         // Note: passing body with DELETE is non-standard but required by some X4 firmwares
-        const response = await fetch(`http://${ip}/edit`, {
+        const response = await fetch(`${baseUrl}/edit`, {
             method: 'DELETE',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',

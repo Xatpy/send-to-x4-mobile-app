@@ -16,16 +16,20 @@ import { UrlInput } from '../components/UrlInput';
 import { ActionButton } from '../components/ActionButton';
 import { StatusIndicator } from '../components/StatusIndicator';
 import { HeadlessWebView } from '../components/HeadlessWebView';
+import { QueueList } from '../components/QueueList';
+import { DumpButton } from '../components/DumpButton';
 import { SettingsModal } from './SettingsModal';
 import { FileList } from '../components/FileList';
 
-import type { Settings, ConnectionStatus, AppState, ExtractionResult } from '../types';
+import type { Settings, ConnectionStatus, AppState, ExtractionResult, QueuedArticle } from '../types';
 import { isValidUrl } from '../utils/sanitizer';
 import { getSettings, saveSettings, getCurrentIp } from '../services/settings';
 import { extractArticle } from '../services/extractor';
 import { buildEpub } from '../services/epub_builder';
 import { uploadToStock, checkStockConnection } from '../services/x4_upload';
 import { uploadToCrossPoint, checkCrossPointConnection } from '../services/crosspoint_upload';
+import { getQueue, addToQueue, removeFromQueue } from '../services/queue_storage';
+import { processQueue } from '../services/queue_processor';
 
 export function HomeScreen() {
     // State
@@ -36,11 +40,11 @@ export function HomeScreen() {
     const [settings, setSettings] = useState<Settings>({
         firmwareType: 'crosspoint',
         stockIp: '192.168.3.3',
-        crossPointIp: '192.168.1.224',
+        crossPointIp: 'crosspoint.local',
     });
     const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({
         connected: false,
-        ip: '192.168.1.224',
+        ip: 'crosspoint.local',
         firmwareType: 'crosspoint',
         checking: true,
     });
@@ -49,33 +53,45 @@ export function HomeScreen() {
     const [extractionUrl, setExtractionUrl] = useState<string | null>(null);
     const [refreshKey, setRefreshKey] = useState(0);
 
-    // Load settings on mount
+    // Queue state
+    const [queue, setQueue] = useState<QueuedArticle[]>([]);
+    const [dumpLoading, setDumpLoading] = useState(false);
+    const [dumpProgress, setDumpProgress] = useState<{
+        current: number;
+        total: number;
+        title?: string;
+    } | undefined>();
+
+    // Load settings and queue on mount
     useEffect(() => {
         loadSettings();
+        loadQueue();
     }, []);
 
-    // Handle Share Intent
+    // Handle Share Intent — auto-add to queue
     const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntent();
 
     useEffect(() => {
         if (hasShareIntent && (shareIntent.type === 'text' || shareIntent.type === 'weburl')) {
-            // Extract URL from webUrl or text property
             const sharedValue = shareIntent.type === 'weburl'
                 ? shareIntent.webUrl
                 : shareIntent.text;
 
             console.log('Received share intent:', sharedValue);
 
-            if (sharedValue && isValidUrl(sharedValue)) {
-                setUrl(sharedValue);
+            if (sharedValue && isValidUrl(sharedValue.trim())) {
+                // Auto-add to queue (catch to avoid unhandled rejection)
+                handleAddToQueueFromShare(sharedValue.trim()).catch(err => {
+                    console.warn('Failed to add shared URL to queue:', err);
+                    // Fallback: put in input so user can try manually
+                    setUrl(sharedValue.trim());
+                });
             } else if (sharedValue) {
-                // Simple fallback: set the whole text if it's not empty
+                // Not a valid URL — put it in the input for manual handling
                 setUrl(sharedValue);
             }
 
-            // Clear clipboard detection to avoid confusion when sharing
             setClipboardUrl(undefined);
-
             resetShareIntent();
         }
     }, [hasShareIntent, shareIntent, resetShareIntent]);
@@ -86,6 +102,7 @@ export function HomeScreen() {
             if (nextState === 'active') {
                 checkClipboard();
                 checkConnection();
+                loadQueue(); // Refresh queue when app comes back
             }
         });
 
@@ -104,6 +121,11 @@ export function HomeScreen() {
             ip: getCurrentIp(loaded),
             firmwareType: loaded.firmwareType,
         }));
+    };
+
+    const loadQueue = async () => {
+        const items = await getQueue();
+        setQueue(items);
     };
 
     const checkClipboard = async () => {
@@ -158,10 +180,104 @@ export function HomeScreen() {
             ip: getCurrentIp(newSettings),
             firmwareType: newSettings.firmwareType,
         }));
-        // Re-check connection with new settings
         setTimeout(checkConnection, 100);
     };
 
+    // --- Add to Queue ---
+    const handleAddToQueue = async () => {
+        const targetUrl = url.trim();
+        if (!targetUrl) {
+            Alert.alert('Error', 'Please enter a URL');
+            return;
+        }
+        if (!isValidUrl(targetUrl)) {
+            Alert.alert('Error', 'Please enter a valid URL');
+            return;
+        }
+
+        try {
+            await addToQueue(targetUrl);
+            setUrl('');
+            await loadQueue();
+            Alert.alert('Added to Queue ✓', 'Article saved for later sending.');
+        } catch (error) {
+            console.warn('Failed to add to queue:', error);
+            Alert.alert('Error', 'Failed to save article to queue.');
+        }
+    };
+
+    const handleAddToQueueFromShare = async (sharedUrl: string) => {
+        await addToQueue(sharedUrl);
+        await loadQueue();
+
+        Alert.alert('Added to Queue ✓', 'Shared article saved for later sending.');
+    };
+
+    // --- Remove from Queue ---
+    const handleRemoveFromQueue = async (id: string) => {
+        try {
+            await removeFromQueue(id);
+            await loadQueue();
+        } catch (error) {
+            console.warn('Failed to remove from queue:', error);
+            Alert.alert('Error', 'Failed to remove article from queue.');
+        }
+    };
+
+    // --- Dump Queue ---
+    const handleDumpQueue = async () => {
+        if (!connectionStatus.connected) {
+            Alert.alert('Not Connected', 'Please connect to the X4 WiFi hotspot first.');
+            return;
+        }
+
+        const pendingCount = queue.filter(
+            item => item.status === 'pending' || item.status === 'failed' || item.status === 'processing'
+        ).length;
+
+        if (pendingCount === 0) {
+            Alert.alert('Queue Empty', 'No articles to send.');
+            return;
+        }
+
+        setDumpLoading(true);
+        setDumpProgress(undefined);
+
+        try {
+            const result = await processQueue(settings, (current, total, title) => {
+                setDumpProgress({ current, total, title });
+            });
+
+            // Refresh queue and file list
+            await loadQueue();
+            setRefreshKey(prev => prev + 1);
+
+            // Show summary
+            if (result.failed.length === 0) {
+                Alert.alert(
+                    'All Sent! ✓',
+                    `${result.succeeded} article${result.succeeded !== 1 ? 's' : ''} sent to your X4.`
+                );
+            } else {
+                const failedSummary = result.failed
+                    .map(f => `• ${f.title || f.url}\n  ${f.error}`)
+                    .join('\n\n');
+
+                Alert.alert(
+                    'Partially Sent',
+                    `${result.succeeded} sent, ${result.failed.length} failed:\n\n${failedSummary}\n\nFailed articles remain in the queue.`
+                );
+            }
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Unknown error';
+            Alert.alert('Dump Failed', message);
+        } finally {
+            setDumpLoading(false);
+            setDumpProgress(undefined);
+        }
+    };
+
+    // --- Send to X4 (direct, one-off) ---
     const handleSendToX4 = async () => {
         if (!url.trim()) {
             Alert.alert('Error', 'Please enter a URL');
@@ -191,7 +307,6 @@ export function HomeScreen() {
         if (hostname.includes('twitter.com') || hostname.includes('x.com')) {
             console.log('Using WebView extraction for Twitter/X');
             setExtractionUrl(targetUrl);
-            // Extraction continues in onExtractionComplete
             return;
         }
 
@@ -219,10 +334,8 @@ export function HomeScreen() {
                 throw new Error(extraction.error || 'Failed to extract article');
             }
 
-            // 2. Build EPUB
             const epub = await buildEpub(extraction.article);
 
-            // 3. Upload to X4
             const ip = getCurrentIp(settings);
             let uploadResult;
 
@@ -236,9 +349,8 @@ export function HomeScreen() {
                 throw new Error(uploadResult.error || 'Upload failed');
             }
 
-            // Success!
             setAppState('success');
-            setRefreshKey(prev => prev + 1); // Trigger file list refresh
+            setRefreshKey(prev => prev + 1);
 
             Alert.alert(
                 'Success! ✓',
@@ -252,17 +364,18 @@ export function HomeScreen() {
             if (!extractionUrl) {
                 setSendLoading(false);
             }
-            // If called from WebView callback, we clear URL there
         }
     };
 
     const handleExtractionComplete = async (result: ExtractionResult) => {
-        setExtractionUrl(null); // Unmount WebView
+        setExtractionUrl(null);
         await processExtractionResult(result);
         setSendLoading(false);
     };
 
-
+    const pendingCount = queue.filter(
+        item => item.status === 'pending' || item.status === 'failed' || item.status === 'processing'
+    ).length;
 
     return (
         <SafeAreaView style={styles.container}>
@@ -289,19 +402,31 @@ export function HomeScreen() {
                     onChange={setUrl}
                     clipboardUrl={clipboardUrl}
                     onUseClipboard={handleUseClipboard}
-                    disabled={sendLoading}
+                    disabled={sendLoading || dumpLoading}
                 />
 
-                {/* Action Button */}
-                <View style={styles.buttonContainer}>
-                    <ActionButton
-                        title="SEND TO X4"
-                        icon="◉"
-                        onPress={handleSendToX4}
-                        loading={sendLoading}
-                        disabled={!url.trim()}
-                        variant="primary"
-                    />
+                {/* Action Buttons */}
+                <View style={styles.buttonRow}>
+                    <View style={styles.buttonHalf}>
+                        <ActionButton
+                            title="SEND NOW"
+                            icon="◉"
+                            onPress={handleSendToX4}
+                            loading={sendLoading}
+                            disabled={!url.trim() || dumpLoading}
+                            variant="primary"
+                        />
+                    </View>
+                    <View style={styles.buttonHalf}>
+                        <ActionButton
+                            title="ADD TO QUEUE"
+                            icon="＋"
+                            onPress={handleAddToQueue}
+                            loading={false}
+                            disabled={!url.trim() || sendLoading || dumpLoading}
+                            variant="secondary"
+                        />
+                    </View>
                 </View>
 
                 {/* Error message */}
@@ -317,6 +442,31 @@ export function HomeScreen() {
                         status={connectionStatus}
                         onRetry={checkConnection}
                     />
+                </View>
+
+                {/* Queue Section */}
+                <View style={styles.queueSection}>
+                    <Text style={styles.sectionTitle}>
+                        Queue {queue.length > 0 ? `(${queue.length})` : ''}
+                    </Text>
+
+                    <QueueList
+                        queue={queue}
+                        onRemove={handleRemoveFromQueue}
+                        disabled={dumpLoading}
+                    />
+
+                    {queue.length > 0 && (
+                        <View style={styles.dumpButtonContainer}>
+                            <DumpButton
+                                count={pendingCount}
+                                connected={connectionStatus.connected}
+                                loading={dumpLoading}
+                                progress={dumpProgress}
+                                onPress={handleDumpQueue}
+                            />
+                        </View>
+                    )}
                 </View>
 
                 {/* File List */}
@@ -336,8 +486,6 @@ export function HomeScreen() {
                 settings={settings}
                 onSave={handleSaveSettings}
             />
-
-
 
             {/* Headless WebView for Extraction */}
             {extractionUrl && (
@@ -388,8 +536,13 @@ const styles = StyleSheet.create({
         padding: 20,
         paddingTop: 10,
     },
-    buttonContainer: {
+    buttonRow: {
+        flexDirection: 'row',
         marginTop: 24,
+        gap: 10,
+    },
+    buttonHalf: {
+        flex: 1,
     },
 
     errorContainer: {
@@ -407,5 +560,19 @@ const styles = StyleSheet.create({
     },
     statusContainer: {
         marginTop: 24,
+    },
+    queueSection: {
+        marginTop: 28,
+    },
+    sectionTitle: {
+        color: 'rgba(255,255,255,0.6)',
+        fontSize: 13,
+        fontWeight: '700',
+        textTransform: 'uppercase',
+        letterSpacing: 1,
+        marginBottom: 12,
+    },
+    dumpButtonContainer: {
+        marginTop: 16,
     },
 });
