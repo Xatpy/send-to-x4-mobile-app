@@ -255,3 +255,74 @@ export async function deleteCrossPointFile(ip: string, filename: string): Promis
         return false;
     }
 }
+
+const SLEEP_FOLDER = 'sleep';
+
+/**
+ * Upload a BMP screensaver to the X4 device's /sleep folder
+ *
+ * Accepts BMP data as a Uint8Array (from the image converter) and uploads it
+ * via the CrossPoint firmware upload API. Uses a temp file, same as epub upload.
+ */
+export async function uploadScreensaverToCrossPoint(
+    ip: string,
+    bmpData: Uint8Array,
+    filename: string
+): Promise<UploadResult> {
+    let tempFile: File | null = null;
+
+    try {
+        const baseUrl = getDeviceBaseUrl(ip);
+
+        // Write BMP data to temp file
+        tempFile = new File(Paths.cache, `screensaver_${Date.now()}_${filename}`);
+        await tempFile.write(bmpData);
+
+        const formData = new FormData();
+        // @ts-ignore - React Native FormData supports URI object
+        formData.append('file', {
+            uri: tempFile.uri,
+            name: filename,
+            type: 'image/bmp',
+        });
+
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+        const response = await fetch(
+            `${baseUrl}/upload?path=${encodeURIComponent('/' + SLEEP_FOLDER)}`,
+            {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'multipart/form-data',
+                },
+                signal: controller.signal,
+            }
+        );
+
+        clearTimeout(timeout);
+
+        if (response.ok) {
+            return { success: true };
+        } else {
+            return {
+                success: false,
+                error: `Upload failed: HTTP ${response.status}`
+            };
+        }
+    } catch (error) {
+        return handleUploadError(error);
+    } finally {
+        // Clean up temp file
+        if (tempFile && tempFile.exists) {
+            try {
+                await tempFile.delete();
+            } catch (e) {
+                console.warn('Failed to delete temp screensaver file:', e);
+            }
+        }
+    }
+}
+

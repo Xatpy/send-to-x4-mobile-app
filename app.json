@@ -39,22 +39,22 @@
       [
         "expo-share-intent",
         {
-          "ios": {
-            "activationRules": {
-              "urls": 1
-            },
-            "group": "group.com.example.sendtox4"
+          "iosActivationRules": {
+            "NSExtensionActivationSupportsWebURLWithMaxCount": 1,
+            "NSExtensionActivationSupportsWebPageWithMaxCount": 1,
+            "NSExtensionActivationSupportsImageWithMaxCount": 1
           },
-          "android": {
-            "intentFilters": [
-              {
-                "action": "android.intent.action.SEND",
-                "data": {
-                  "mimeType": "text/plain"
-                }
-              }
-            ]
-          }
+          "iosAppGroupIdentifier": "group.com.example.sendtox4",
+          "androidIntentFilters": [
+            "text/*",
+            "image/*"
+          ]
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Select BMP screensavers to send to your X4."
         }
       ]
     ],

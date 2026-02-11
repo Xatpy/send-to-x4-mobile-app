@@ -18,6 +18,7 @@ import { StatusIndicator } from '../components/StatusIndicator';
 import { HeadlessWebView } from '../components/HeadlessWebView';
 import { QueueList } from '../components/QueueList';
 import { DumpButton } from '../components/DumpButton';
+import { ScreensaverButton } from '../components/ScreensaverButton';
 import { SettingsModal } from './SettingsModal';
 import { FileList } from '../components/FileList';
 
@@ -27,7 +28,8 @@ import { getSettings, saveSettings, getCurrentIp } from '../services/settings';
 import { extractArticle } from '../services/extractor';
 import { buildEpub } from '../services/epub_builder';
 import { uploadToStock, checkStockConnection } from '../services/x4_upload';
-import { uploadToCrossPoint, checkCrossPointConnection } from '../services/crosspoint_upload';
+import { uploadToCrossPoint, checkCrossPointConnection, uploadScreensaverToCrossPoint } from '../services/crosspoint_upload';
+import { convertImageToScreensaverBmp } from '../services/image_converter';
 import { getQueue, addToQueue, removeFromQueue } from '../services/queue_storage';
 import { processQueue } from '../services/queue_processor';
 
@@ -62,17 +64,46 @@ export function HomeScreen() {
         title?: string;
     } | undefined>();
 
+    // Screensaver state
+    const [screensaverLoading, setScreensaverLoading] = useState(false);
+
     // Load settings and queue on mount
     useEffect(() => {
         loadSettings();
         loadQueue();
     }, []);
 
-    // Handle Share Intent — auto-add to queue
+    // Handle Share Intent — auto-add URL to queue, or upload image as screensaver
     const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntent();
 
     useEffect(() => {
-        if (hasShareIntent && (shareIntent.type === 'text' || shareIntent.type === 'weburl')) {
+        if (!hasShareIntent) return;
+
+        // Handle shared images (from gallery share sheet)
+        if ((shareIntent.type === 'media' || shareIntent.type === 'file') && shareIntent.files && shareIntent.files.length > 0) {
+            const file = shareIntent.files[0];
+            const fileUri = file.path;
+            const width = file.width ?? undefined;
+            const height = file.height ?? undefined;
+
+            // Generate a .bmp filename
+            const originalName = file.fileName || `shared_${Date.now()}`;
+            const baseName = originalName.replace(/\.[^.]+$/, '');
+            const filename = `${baseName}.bmp`;
+
+            console.log('Received shared image:', filename, fileUri);
+
+            handleSendScreensaver(fileUri, filename, width, height).catch(err => {
+                console.warn('Failed to upload shared screensaver:', err);
+                Alert.alert('Upload Failed', 'Could not convert and upload the shared image.');
+            });
+
+            resetShareIntent();
+            return;
+        }
+
+        // Handle shared URLs (existing behavior)
+        if (shareIntent.type === 'text' || shareIntent.type === 'weburl') {
             const sharedValue = shareIntent.type === 'weburl'
                 ? shareIntent.webUrl
                 : shareIntent.text;
@@ -373,6 +404,35 @@ export function HomeScreen() {
         setSendLoading(false);
     };
 
+    // --- Send Screensaver ---
+    const handleSendScreensaver = async (uri: string, filename: string, width?: number, height?: number) => {
+        if (!connectionStatus.connected) {
+            Alert.alert('Not Connected', 'Please connect to the X4 WiFi hotspot first.');
+            return;
+        }
+
+        setScreensaverLoading(true);
+        try {
+            // Convert any image to 480×800 uncompressed BMP
+            const bmp = await convertImageToScreensaverBmp(uri, width, height);
+
+            const ip = getCurrentIp(settings);
+            const result = await uploadScreensaverToCrossPoint(ip, bmp.data, bmp.filename);
+
+            if (!result.success) {
+                throw new Error(result.error || 'Upload failed');
+            }
+
+            setRefreshKey(prev => prev + 1);
+            Alert.alert('Success! ✓', `Screensaver "${bmp.filename}" has been sent to your X4.`);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Unknown error';
+            Alert.alert('Upload Failed', message);
+        } finally {
+            setScreensaverLoading(false);
+        }
+    };
+
     const pendingCount = queue.filter(
         item => item.status === 'pending' || item.status === 'failed' || item.status === 'processing'
     ).length;
@@ -467,6 +527,16 @@ export function HomeScreen() {
                             />
                         </View>
                     )}
+                </View>
+
+                {/* Screensaver Section */}
+                <View style={styles.screensaverSection}>
+                    <Text style={styles.sectionTitle}>Screensavers</Text>
+                    <ScreensaverButton
+                        connected={connectionStatus.connected}
+                        onImageSelected={handleSendScreensaver}
+                        loading={screensaverLoading}
+                    />
                 </View>
 
                 {/* File List */}
@@ -574,5 +644,8 @@ const styles = StyleSheet.create({
     },
     dumpButtonContainer: {
         marginTop: 16,
+    },
+    screensaverSection: {
+        marginTop: 28,
     },
 });
