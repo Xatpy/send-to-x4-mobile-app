@@ -97,6 +97,63 @@ export async function uploadToCrossPoint(
 }
 
 /**
+ * Upload a local file (URI) directly to X4 without reading into memory first
+ */
+export async function uploadLocalFileToCrossPoint(
+    ip: string,
+    fileUri: string,
+    filename: string
+): Promise<UploadResult> {
+    const baseUrl = getDeviceBaseUrl(ip);
+    const targetPath = `/${TARGET_FOLDER}`;
+
+    try {
+        // 1. Ensure folder exists
+        const folderReady = await ensureFolderExistsCrossPoint(ip, TARGET_FOLDER);
+        const uploadPath = folderReady ? targetPath : `/`;
+
+        // 2. Upload directly from the source URI
+        const formData = new FormData();
+        // @ts-ignore - React Native FormData support URI object
+        formData.append('file', {
+            uri: fileUri,
+            name: filename,
+            type: 'application/epub+zip', // or generic application/octet-stream
+        });
+
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+        const response = await fetch(
+            `${baseUrl}/upload?path=${encodeURIComponent(uploadPath)}`,
+            {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'multipart/form-data',
+                },
+                signal: controller.signal,
+            }
+        );
+
+        clearTimeout(timeout);
+
+        if (response.ok) {
+            return { success: true };
+        } else {
+            return {
+                success: false,
+                error: `Upload failed: HTTP ${response.status}`
+            };
+        }
+
+    } catch (error) {
+        return handleUploadError(error);
+    }
+}
+
+/**
  * Check if folder exists on CrossPoint firmware, create if not
  */
 async function ensureFolderExistsCrossPoint(ip: string, folder: string): Promise<boolean> {

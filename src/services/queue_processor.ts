@@ -2,7 +2,7 @@ import type { QueuedArticle, DumpResult, Settings } from '../types';
 import { getQueue, updateQueueItem, removeFromQueue } from './queue_storage';
 import { extractArticle } from './extractor';
 import { buildEpub } from './epub_builder';
-import { uploadToCrossPoint } from './crosspoint_upload';
+import { uploadToCrossPoint, uploadLocalFileToCrossPoint } from './crosspoint_upload';
 import { uploadToStock } from './x4_upload';
 import { getCurrentIp } from './settings';
 
@@ -52,26 +52,44 @@ export async function processQueue(
         await updateQueueItem(item.id, { status: 'processing', errorMessage: undefined });
 
         try {
-            // 1. Extract article
-            const extraction = await extractArticle(item.url);
+            // 1. Check if local file
+            if (item.isLocalFile) {
+                // Direct upload
+                if (settings.firmwareType === 'crosspoint') {
+                    const filename = item.title || item.url.split('/').pop() || 'upload.epub';
+                    // Ensure filename ends with .epub if not
+                    const safeFilename = filename.toLowerCase().endsWith('.epub') ? filename : `${filename}.epub`;
 
-            if (!extraction.success || !extraction.article) {
-                throw new Error(extraction.error || 'Failed to extract article');
-            }
-
-            // 2. Build EPUB
-            const epub = await buildEpub(extraction.article);
-
-            // 3. Upload to X4
-            let uploadResult;
-            if (settings.firmwareType === 'crosspoint') {
-                uploadResult = await uploadToCrossPoint(ip, epub.data, epub.filename);
+                    const result = await uploadLocalFileToCrossPoint(ip, item.url, safeFilename);
+                    if (!result.success) throw new Error(result.error);
+                } else {
+                    // Stock firmware doesn't support direct file upload easily without conversion?
+                    // Or we just implement uploadToStock for files if needed. 
+                    // For now, assume CrossPoint for file uploads or fallback.
+                    throw new Error('Local file upload only supported on CrossPoint firmware');
+                }
             } else {
-                uploadResult = await uploadToStock(ip, epub.data, epub.filename);
-            }
+                // 1. Extract article
+                const extraction = await extractArticle(item.url);
 
-            if (!uploadResult.success) {
-                throw new Error(uploadResult.error || 'Upload failed');
+                if (!extraction.success || !extraction.article) {
+                    throw new Error(extraction.error || 'Failed to extract article');
+                }
+
+                // 2. Build EPUB
+                const epub = await buildEpub(extraction.article);
+
+                // 3. Upload to X4
+                let uploadResult;
+                if (settings.firmwareType === 'crosspoint') {
+                    uploadResult = await uploadToCrossPoint(ip, epub.data, epub.filename);
+                } else {
+                    uploadResult = await uploadToStock(ip, epub.data, epub.filename);
+                }
+
+                if (!uploadResult.success) {
+                    throw new Error(uploadResult.error || 'Upload failed');
+                }
             }
 
             // Success — remove from queue

@@ -18,6 +18,7 @@ import {
     AppState as RNAppState,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
+import * as DocumentPicker from 'expo-document-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useConnection } from '../contexts/ConnectionProvider';
@@ -141,6 +142,25 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
         } catch (error) {
             console.warn('Failed to add to queue:', error);
             Alert.alert('Error', 'Failed to save article to queue.');
+        }
+    };
+
+    const handlePickEpub = async () => {
+        try {
+            const result = await DocumentPicker.getDocumentAsync({
+                type: ['application/epub+zip', 'application/x-epub'],
+                copyToCacheDirectory: true, // Ensure we have access
+            });
+
+            if (result.canceled || !result.assets || result.assets.length === 0) return;
+
+            const file = result.assets[0];
+            await addToQueue(file.uri, file.name, true);
+            await loadQueue();
+            Alert.alert('Added to Queue ✓', `"${file.name}" saved for later sending.`);
+        } catch (error) {
+            console.warn('Pick epub error:', error);
+            Alert.alert('Error', 'Failed to pick EPUB file.');
         }
     };
 
@@ -336,6 +356,18 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
                             variant="secondary"
                         />
                     </View>
+                </View>
+
+                {/* File Picker */}
+                <View style={{ marginTop: 12 }}>
+                    <ActionButton
+                        title="PICK EPUB FILE"
+                        icon="📂"
+                        onPress={handlePickEpub}
+                        loading={false}
+                        disabled={sendLoading || dumpLoading}
+                        variant="secondary"
+                    />
                 </View>
 
                 {/* Error message */}

@@ -69,6 +69,7 @@ export interface QueuedArticle {
   addedAt: number;       // timestamp when added to queue
   status: 'pending' | 'processing' | 'failed';
   errorMessage?: string; // populated when status === 'failed'
+  isLocalFile?: boolean; // true if this is a local .epub file (skip extraction)
 }
 
 // Result of a batch dump operation

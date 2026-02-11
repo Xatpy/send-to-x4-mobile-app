@@ -71,18 +71,19 @@ export async function getQueue(): Promise<QueuedArticle[]> {
 }
 
 /**
- * Add a URL to the queue
+ * Add a URL or Local File to the queue
  */
-export async function addToQueue(url: string, title?: string): Promise<QueuedArticle> {
+export async function addToQueue(content: string, title?: string, isLocalFile?: boolean): Promise<QueuedArticle> {
     return withLock(async () => {
         const queue = await readQueue();
 
         const item: QueuedArticle = {
             id: `q_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-            url: url.trim(),
-            title: title || extractDisplayTitle(url),
+            url: content.trim(),
+            title: title || (isLocalFile ? content.split('/').pop() : extractDisplayTitle(content)),
             addedAt: Date.now(),
             status: 'pending',
+            isLocalFile,
         };
 
         queue.push(item);
