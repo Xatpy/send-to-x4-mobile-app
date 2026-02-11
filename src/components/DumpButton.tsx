@@ -13,10 +13,27 @@ interface DumpButtonProps {
     loading: boolean;
     progress?: { current: number; total: number; title?: string };
     onPress: () => void;
+    label?: string;
+    hint?: string;
+    disabled?: boolean;
 }
 
-export function DumpButton({ count, connected, loading, progress, onPress }: DumpButtonProps) {
-    const disabled = count === 0 || !connected || loading;
+export function DumpButton({ count, connected, loading, progress, onPress, label, hint, disabled: forceDisabled }: DumpButtonProps) {
+    // If we have a custom label, we might want to allow pressing even if not connected (handled by parent)
+    // But for now, let's keep strict check unless we want to change behavior.
+    // Actually, ScreensaversScreen handles "Not Connected" alert in onPress, so we should enable button?
+    // The current logic disables if !connected.
+    // Let's rely on 'count' and 'loading'. Implementation in ScreensaversScreen passes disabled={!connected} to DumpButton?
+    // No, ScreensaversScreen passes disabled={!connected} to its own ActionButton, but here we use DumpButton.
+    // Let's trust the props.
+
+    const isDisabled = forceDisabled || count === 0 || (!connected && !label) || loading;
+    // If label is provided (like "SEND QUEUE"), maybe we still want to disable if not connected?
+    // Let's stick to original logic: disable if not connected. Status check should be in parent?
+    // In ArticlesScreen, DumpButton is disabled if !connected.
+    // In ScreensaversScreen, I want to show "Connect to X4" hint if !connected.
+
+    // Let's render the button disabled if !connected, but show the hint.
 
     const getButtonText = () => {
         if (loading && progress) {
@@ -24,6 +41,9 @@ export function DumpButton({ count, connected, loading, progress, onPress }: Dum
         }
         if (loading) {
             return 'SENDING...';
+        }
+        if (label) {
+            return label;
         }
         if (!connected) {
             return `SEND ALL TO X4 (${count})`;
@@ -39,11 +59,11 @@ export function DumpButton({ count, connected, loading, progress, onPress }: Dum
             <TouchableOpacity
                 style={[
                     styles.button,
-                    disabled && styles.buttonDisabled,
+                    isDisabled && styles.buttonDisabled,
                     loading && styles.buttonLoading,
                 ]}
                 onPress={onPress}
-                disabled={disabled}
+                disabled={isDisabled}
                 activeOpacity={0.7}
             >
                 {loading ? (
@@ -51,14 +71,14 @@ export function DumpButton({ count, connected, loading, progress, onPress }: Dum
                 ) : (
                     <Text style={styles.icon}>⬆</Text>
                 )}
-                <Text style={[styles.buttonText, disabled && styles.buttonTextDisabled]}>
+                <Text style={[styles.buttonText, isDisabled && styles.buttonTextDisabled]}>
                     {getButtonText()}
                 </Text>
             </TouchableOpacity>
 
             {!connected && count > 0 && (
                 <Text style={styles.hint}>
-                    Connect to X4 WiFi to send queued articles
+                    {hint || 'Connect to X4 WiFi to send queued items'}
                 </Text>
             )}
 

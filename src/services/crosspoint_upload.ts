@@ -100,28 +100,33 @@ export async function uploadToCrossPoint(
  * Check if folder exists on CrossPoint firmware, create if not
  */
 async function ensureFolderExistsCrossPoint(ip: string, folder: string): Promise<boolean> {
+    const baseUrl = getDeviceBaseUrl(ip);
+
+    // 1. Try to list to check existence
     try {
-        const baseUrl = getDeviceBaseUrl(ip);
-        // Check if folder exists
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 10000);
+        const timeout = setTimeout(() => controller.abort(), 5000); // Short timeout for check
 
         const listRes = await fetch(`${baseUrl}/api/files?path=/`, {
             signal: controller.signal,
         });
-
         clearTimeout(timeout);
 
-        if (!listRes.ok) return false;
+        if (listRes.ok) {
+            const items = await listRes.json();
+            const exists = Array.isArray(items) && items.some((item: any) =>
+                item.isDirectory && item.name === folder
+            );
+            if (exists) return true;
+        } else {
+            console.warn(`List files failed in ensureFolder: ${listRes.status}`);
+        }
+    } catch (e) {
+        console.warn('List files exception in ensureFolder (proceeding to mkdir):', e);
+    }
 
-        const items = await listRes.json();
-        const exists = Array.isArray(items) && items.some((item: any) =>
-            item.isDirectory && item.name === folder
-        );
-
-        if (exists) return true;
-
-        // Create folder
+    // 2. Try to create (if not found or list failed)
+    try {
         const formData = new FormData();
         formData.append('name', folder);
         formData.append('path', '/');
@@ -137,8 +142,17 @@ async function ensureFolderExistsCrossPoint(ip: string, folder: string): Promise
 
         clearTimeout(createTimeout);
 
-        return createRes.ok;
-    } catch {
+        if (!createRes.ok) {
+            console.warn(`mkdir failed: ${createRes.status}`);
+            // If 400, 409 or 500, it often means folder already exists or server is weird but folder might be there.
+            if (createRes.status === 400 || createRes.status === 409 || createRes.status === 500) {
+                return true;
+            }
+            return false;
+        }
+        return true;
+    } catch (e) {
+        console.warn('mkdir exception:', e);
         return false;
     }
 }
@@ -274,6 +288,15 @@ export async function uploadScreensaverToCrossPoint(
     try {
         const baseUrl = getDeviceBaseUrl(ip);
 
+        // Ensure /sleep folder exists
+        const folderReady = await ensureFolderExistsCrossPoint(ip, SLEEP_FOLDER);
+        if (!folderReady) {
+            return {
+                success: false,
+                error: `Could not create required '/${SLEEP_FOLDER}' folder on device.`
+            };
+        }
+
         // Write BMP data to temp file
         tempFile = new File(Paths.cache, `screensaver_${Date.now()}_${filename}`);
         await tempFile.write(bmpData);
@@ -323,6 +346,77 @@ export async function uploadScreensaverToCrossPoint(
                 console.warn('Failed to delete temp screensaver file:', e);
             }
         }
+    }
+}
+
+/**
+ * List screensaver files in the /sleep folder on CrossPoint firmware
+ */
+export async function listCrossPointSleepFiles(ip: string): Promise<RemoteFile[]> {
+    try {
+        const baseUrl = getDeviceBaseUrl(ip);
+
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000);
+
+        const response = await fetch(`${baseUrl}/api/files?path=/${SLEEP_FOLDER}`, {
+            signal: controller.signal,
+        });
+
+        clearTimeout(timeout);
+
+        if (!response.ok) return [];
+
+        const items = await response.json();
+
+        if (!Array.isArray(items)) return [];
+
+        return items
+            .filter((item: any) => !item.isDirectory && item.name.endsWith('.bmp'))
+            .map((item: any) => ({
+                name: decodeURIComponent(item.name),
+                rawName: item.name,
+                size: item.size,
+                timestamp: item.lastModified || undefined,
+            }))
+            .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+    } catch (error) {
+        console.warn('Error listing CrossPoint sleep files:', error);
+        return [];
+    }
+}
+
+/**
+ * Delete a screensaver file from the /sleep folder on CrossPoint firmware
+ */
+export async function deleteCrossPointSleepFile(ip: string, filename: string): Promise<boolean> {
+    try {
+        const baseUrl = getDeviceBaseUrl(ip);
+        const path = `/${SLEEP_FOLDER}/${filename}`;
+
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000);
+
+        const params = new URLSearchParams();
+        params.append('path', path);
+        params.append('type', 'file');
+
+        const response = await fetch(`${baseUrl}/delete`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: params.toString(),
+            signal: controller.signal,
+        });
+
+        clearTimeout(timeout);
+
+        return response.ok;
+    } catch (error) {
+        console.warn('Error deleting CrossPoint sleep file:', error);
+        return false;
     }
 }
 

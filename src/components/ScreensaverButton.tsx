@@ -11,12 +11,13 @@ import * as ImagePicker from 'expo-image-picker';
 
 interface ScreensaverButtonProps {
     connected: boolean;
-    onImageSelected: (uri: string, filename: string, width?: number, height?: number) => void;
+    onImageSelected: (items: Array<{ uri: string, filename: string, width?: number, height?: number }>) => void;
     loading: boolean;
 }
 
 export function ScreensaverButton({ connected, onImageSelected, loading }: ScreensaverButtonProps) {
-    const disabled = !connected || loading;
+    // Don't disable if not connected - allow picking to add to queue
+    const disabled = loading;
 
     const handlePress = async () => {
         try {
@@ -24,24 +25,31 @@ export function ScreensaverButton({ connected, onImageSelected, loading }: Scree
                 mediaTypes: ['images'],
                 allowsEditing: false,
                 quality: 1,
+                allowsMultipleSelection: true,
+                selectionLimit: 10,
             });
 
             if (result.canceled || !result.assets || result.assets.length === 0) {
                 return;
             }
 
-            const asset = result.assets[0];
-            const uri = asset.uri;
-            const width = asset.width;
-            const height = asset.height;
+            const selectedItems = result.assets.map(asset => {
+                const uri = asset.uri;
+                // Extract filename from URI
+                const uriParts = uri.split('/');
+                const originalName = uriParts[uriParts.length - 1];
+                const baseName = originalName.replace(/\.[^.]+$/, '');
+                const filename = `${baseName}.bmp`; // We might need unique names if multiple selected
 
-            // Extract filename from URI, replace extension with .bmp
-            const uriParts = uri.split('/');
-            const originalName = uriParts[uriParts.length - 1];
-            const baseName = originalName.replace(/\.[^.]+$/, '');
-            const filename = `${baseName}.bmp`;
+                return {
+                    uri,
+                    filename,
+                    width: asset.width,
+                    height: asset.height
+                };
+            });
 
-            onImageSelected(uri, filename, width, height);
+            onImageSelected(selectedItems);
         } catch (error) {
             console.warn('Image picker error:', error);
             Alert.alert('Error', 'Failed to open image picker.');
@@ -52,7 +60,7 @@ export function ScreensaverButton({ connected, onImageSelected, loading }: Scree
         if (loading) {
             return 'CONVERTING & SENDING...';
         }
-        return 'SEND SCREENSAVER';
+        return 'PICK IMAGE';
     };
 
     return (

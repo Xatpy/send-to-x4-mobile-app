@@ -77,3 +77,15 @@ export interface DumpResult {
   succeeded: number;
   failed: { id: string; url: string; title?: string; error: string }[];
 }
+
+// A queued screensaver image
+export interface QueuedScreensaver {
+  id: string;            // unique ID (timestamp-based)
+  uri: string;           // local file URI
+  filename: string;      // desired filename (e.g. "image.bmp")
+  width?: number;        // optional dimensions (if known)
+  height?: number;
+  addedAt: number;
+  status: 'pending' | 'processing' | 'failed' | 'success';
+  error?: string;
+}

@@ -1,59 +1,58 @@
+/**
+ * ArticlesScreen — Tab for sending articles to X4.
+ *
+ * Features:
+ *   - URL input with clipboard detection
+ *   - Send Now (one-off) / Add to Queue
+ *   - Queue list with batch dump
+ *   - Headless WebView extraction for Twitter/X
+ */
+
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     View,
     Text,
     StyleSheet,
     ScrollView,
-    TouchableOpacity,
     Alert,
     AppState as RNAppState,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
-import { useShareIntent } from 'expo-share-intent';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useConnection } from '../contexts/ConnectionProvider';
 import { UrlInput } from '../components/UrlInput';
 import { ActionButton } from '../components/ActionButton';
-import { StatusIndicator } from '../components/StatusIndicator';
-import { HeadlessWebView } from '../components/HeadlessWebView';
 import { QueueList } from '../components/QueueList';
 import { DumpButton } from '../components/DumpButton';
-import { ScreensaverButton } from '../components/ScreensaverButton';
-import { SettingsModal } from './SettingsModal';
-import { FileList } from '../components/FileList';
+import { HeadlessWebView } from '../components/HeadlessWebView';
 
-import type { Settings, ConnectionStatus, AppState, ExtractionResult, QueuedArticle } from '../types';
+import type { AppState, ExtractionResult, QueuedArticle } from '../types';
 import { isValidUrl } from '../utils/sanitizer';
-import { getSettings, saveSettings, getCurrentIp } from '../services/settings';
 import { extractArticle } from '../services/extractor';
 import { buildEpub } from '../services/epub_builder';
-import { uploadToStock, checkStockConnection } from '../services/x4_upload';
-import { uploadToCrossPoint, checkCrossPointConnection, uploadScreensaverToCrossPoint } from '../services/crosspoint_upload';
-import { convertImageToScreensaverBmp } from '../services/image_converter';
+import { uploadToStock } from '../services/x4_upload';
+import { uploadToCrossPoint } from '../services/crosspoint_upload';
+import { getCurrentIp } from '../services/settings';
 import { getQueue, addToQueue, removeFromQueue } from '../services/queue_storage';
 import { processQueue } from '../services/queue_processor';
 
-export function HomeScreen() {
-    // State
+interface ArticlesScreenProps {
+    /** Pre-filled URL from share intent */
+    sharedUrl?: string | null;
+    onSharedUrlConsumed?: () => void;
+}
+
+export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScreenProps) {
+    const { settings, connectionStatus } = useConnection();
+
+    // Local state
     const [url, setUrl] = useState('');
     const [clipboardUrl, setClipboardUrl] = useState<string | undefined>();
     const [appState, setAppState] = useState<AppState>('idle');
     const [errorMessage, setErrorMessage] = useState<string | undefined>();
-    const [settings, setSettings] = useState<Settings>({
-        firmwareType: 'crosspoint',
-        stockIp: '192.168.3.3',
-        crossPointIp: 'crosspoint.local',
-    });
-    const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({
-        connected: false,
-        ip: 'crosspoint.local',
-        firmwareType: 'crosspoint',
-        checking: true,
-    });
-    const [settingsVisible, setSettingsVisible] = useState(false);
     const [sendLoading, setSendLoading] = useState(false);
     const [extractionUrl, setExtractionUrl] = useState<string | null>(null);
-    const [refreshKey, setRefreshKey] = useState(0);
 
     // Queue state
     const [queue, setQueue] = useState<QueuedArticle[]>([]);
@@ -64,157 +63,65 @@ export function HomeScreen() {
         title?: string;
     } | undefined>();
 
-    // Screensaver state
-    const [screensaverLoading, setScreensaverLoading] = useState(false);
-
-    // Load settings and queue on mount
-    useEffect(() => {
-        loadSettings();
-        loadQueue();
-    }, []);
-
-    // Handle Share Intent — auto-add URL to queue, or upload image as screensaver
-    const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntent();
-
-    useEffect(() => {
-        if (!hasShareIntent) return;
-
-        // Handle shared images (from gallery share sheet)
-        if ((shareIntent.type === 'media' || shareIntent.type === 'file') && shareIntent.files && shareIntent.files.length > 0) {
-            const file = shareIntent.files[0];
-            const fileUri = file.path;
-            const width = file.width ?? undefined;
-            const height = file.height ?? undefined;
-
-            // Generate a .bmp filename
-            const originalName = file.fileName || `shared_${Date.now()}`;
-            const baseName = originalName.replace(/\.[^.]+$/, '');
-            const filename = `${baseName}.bmp`;
-
-            console.log('Received shared image:', filename, fileUri);
-
-            handleSendScreensaver(fileUri, filename, width, height).catch(err => {
-                console.warn('Failed to upload shared screensaver:', err);
-                Alert.alert('Upload Failed', 'Could not convert and upload the shared image.');
-            });
-
-            resetShareIntent();
-            return;
-        }
-
-        // Handle shared URLs (existing behavior)
-        if (shareIntent.type === 'text' || shareIntent.type === 'weburl') {
-            const sharedValue = shareIntent.type === 'weburl'
-                ? shareIntent.webUrl
-                : shareIntent.text;
-
-            console.log('Received share intent:', sharedValue);
-
-            if (sharedValue && isValidUrl(sharedValue.trim())) {
-                // Auto-add to queue (catch to avoid unhandled rejection)
-                handleAddToQueueFromShare(sharedValue.trim()).catch(err => {
-                    console.warn('Failed to add shared URL to queue:', err);
-                    // Fallback: put in input so user can try manually
-                    setUrl(sharedValue.trim());
-                });
-            } else if (sharedValue) {
-                // Not a valid URL — put it in the input for manual handling
-                setUrl(sharedValue);
-            }
-
-            setClipboardUrl(undefined);
-            resetShareIntent();
-        }
-    }, [hasShareIntent, shareIntent, resetShareIntent]);
-
-    // Check clipboard and connection when app comes to foreground
-    useEffect(() => {
-        const subscription = RNAppState.addEventListener('change', (nextState) => {
-            if (nextState === 'active') {
-                checkClipboard();
-                checkConnection();
-                loadQueue(); // Refresh queue when app comes back
-            }
-        });
-
-        // Initial checks
-        checkClipboard();
-        checkConnection();
-
-        return () => subscription.remove();
-    }, [settings]);
-
-    const loadSettings = async () => {
-        const loaded = await getSettings();
-        setSettings(loaded);
-        setConnectionStatus(prev => ({
-            ...prev,
-            ip: getCurrentIp(loaded),
-            firmwareType: loaded.firmwareType,
-        }));
-    };
-
-    const loadQueue = async () => {
+    const loadQueue = useCallback(async () => {
         const items = await getQueue();
         setQueue(items);
-    };
+    }, []);
 
-    const checkClipboard = async () => {
-        try {
-            const hasString = await Clipboard.hasStringAsync();
-            if (hasString) {
-                const text = await Clipboard.getStringAsync();
-                if (text && isValidUrl(text.trim())) {
-                    setClipboardUrl(text.trim());
+    // Load queue on mount
+    useEffect(() => {
+        loadQueue();
+    }, [loadQueue]);
+
+    // Handle shared URL from share intent
+    useEffect(() => {
+        if (sharedUrl) {
+            handleAddToQueueFromShare(sharedUrl).catch(err => {
+                console.warn('Failed to add shared URL to queue:', err);
+                setUrl(sharedUrl);
+            });
+            onSharedUrlConsumed?.();
+        }
+    }, [sharedUrl]);
+
+    // Check clipboard on foreground
+    useEffect(() => {
+        const checkClipboard = async () => {
+            try {
+                const hasString = await Clipboard.hasStringAsync();
+                if (hasString) {
+                    const text = await Clipboard.getStringAsync();
+                    if (text && isValidUrl(text.trim())) {
+                        setClipboardUrl(text.trim());
+                    } else {
+                        setClipboardUrl(undefined);
+                    }
                 } else {
                     setClipboardUrl(undefined);
                 }
-            } else {
-                setClipboardUrl(undefined);
+            } catch (error) {
+                console.warn('Failed to check clipboard:', error);
             }
-        } catch (error) {
-            console.warn('Failed to check clipboard:', error);
-        }
-    };
+        };
 
-    const checkConnection = async () => {
-        setConnectionStatus(prev => ({ ...prev, checking: true }));
+        checkClipboard();
 
-        const ip = getCurrentIp(settings);
-        let connected = false;
-
-        if (settings.firmwareType === 'crosspoint') {
-            connected = await checkCrossPointConnection(ip);
-        } else {
-            connected = await checkStockConnection(ip);
-        }
-
-        setConnectionStatus({
-            connected,
-            ip,
-            firmwareType: settings.firmwareType,
-            checking: false,
+        const sub = RNAppState.addEventListener('change', (nextState) => {
+            if (nextState === 'active') {
+                checkClipboard();
+                loadQueue();
+            }
         });
-    };
+
+        return () => sub.remove();
+    }, [loadQueue]);
+
+    // --- Handlers ---
 
     const handleUseClipboard = () => {
-        if (clipboardUrl) {
-            setUrl(clipboardUrl);
-        }
+        if (clipboardUrl) setUrl(clipboardUrl);
     };
 
-    const handleSaveSettings = async (newSettings: Settings) => {
-        await saveSettings(newSettings);
-        setSettings(newSettings);
-        setConnectionStatus(prev => ({
-            ...prev,
-            ip: getCurrentIp(newSettings),
-            firmwareType: newSettings.firmwareType,
-        }));
-        setTimeout(checkConnection, 100);
-    };
-
-    // --- Add to Queue ---
     const handleAddToQueue = async () => {
         const targetUrl = url.trim();
         if (!targetUrl) {
@@ -237,14 +144,12 @@ export function HomeScreen() {
         }
     };
 
-    const handleAddToQueueFromShare = async (sharedUrl: string) => {
-        await addToQueue(sharedUrl);
+    const handleAddToQueueFromShare = async (sharedUrlValue: string) => {
+        await addToQueue(sharedUrlValue);
         await loadQueue();
-
         Alert.alert('Added to Queue ✓', 'Shared article saved for later sending.');
     };
 
-    // --- Remove from Queue ---
     const handleRemoveFromQueue = async (id: string) => {
         try {
             await removeFromQueue(id);
@@ -255,7 +160,6 @@ export function HomeScreen() {
         }
     };
 
-    // --- Dump Queue ---
     const handleDumpQueue = async () => {
         if (!connectionStatus.connected) {
             Alert.alert('Not Connected', 'Please connect to the X4 WiFi hotspot first.');
@@ -279,11 +183,8 @@ export function HomeScreen() {
                 setDumpProgress({ current, total, title });
             });
 
-            // Refresh queue and file list
             await loadQueue();
-            setRefreshKey(prev => prev + 1);
 
-            // Show summary
             if (result.failed.length === 0) {
                 Alert.alert(
                     'All Sent! ✓',
@@ -308,23 +209,17 @@ export function HomeScreen() {
         }
     };
 
-    // --- Send to X4 (direct, one-off) ---
     const handleSendToX4 = async () => {
         if (!url.trim()) {
             Alert.alert('Error', 'Please enter a URL');
             return;
         }
-
         if (!isValidUrl(url.trim())) {
             Alert.alert('Error', 'Please enter a valid URL');
             return;
         }
-
         if (!connectionStatus.connected) {
-            Alert.alert(
-                'Not Connected',
-                'Please connect to the X4 WiFi hotspot first.'
-            );
+            Alert.alert('Not Connected', 'Please connect to the X4 WiFi hotspot first.');
             return;
         }
 
@@ -332,16 +227,13 @@ export function HomeScreen() {
         setAppState('processing');
         setErrorMessage(undefined);
 
-        // Check if we need to use WebView extraction (Twitter/X)
         const targetUrl = url.trim();
         const hostname = new URL(targetUrl).hostname;
         if (hostname.includes('twitter.com') || hostname.includes('x.com')) {
-            console.log('Using WebView extraction for Twitter/X');
             setExtractionUrl(targetUrl);
             return;
         }
 
-        // Standard extraction
         try {
             const extraction = await extractArticle(targetUrl);
             await processExtractionResult(extraction);
@@ -366,7 +258,6 @@ export function HomeScreen() {
             }
 
             const epub = await buildEpub(extraction.article);
-
             const ip = getCurrentIp(settings);
             let uploadResult;
 
@@ -381,14 +272,13 @@ export function HomeScreen() {
             }
 
             setAppState('success');
-            setRefreshKey(prev => prev + 1);
+            setUrl('');
 
             Alert.alert(
                 'Success! ✓',
                 `"${extraction.article.title}" has been sent to your X4.`,
                 [{ text: 'OK', onPress: () => setAppState('idle') }]
             );
-
         } catch (error) {
             handleError(error);
         } finally {
@@ -404,53 +294,12 @@ export function HomeScreen() {
         setSendLoading(false);
     };
 
-    // --- Send Screensaver ---
-    const handleSendScreensaver = async (uri: string, filename: string, width?: number, height?: number) => {
-        if (!connectionStatus.connected) {
-            Alert.alert('Not Connected', 'Please connect to the X4 WiFi hotspot first.');
-            return;
-        }
-
-        setScreensaverLoading(true);
-        try {
-            // Convert any image to 480×800 uncompressed BMP
-            const bmp = await convertImageToScreensaverBmp(uri, width, height);
-
-            const ip = getCurrentIp(settings);
-            const result = await uploadScreensaverToCrossPoint(ip, bmp.data, bmp.filename);
-
-            if (!result.success) {
-                throw new Error(result.error || 'Upload failed');
-            }
-
-            setRefreshKey(prev => prev + 1);
-            Alert.alert('Success! ✓', `Screensaver "${bmp.filename}" has been sent to your X4.`);
-        } catch (error) {
-            const message = error instanceof Error ? error.message : 'Unknown error';
-            Alert.alert('Upload Failed', message);
-        } finally {
-            setScreensaverLoading(false);
-        }
-    };
-
     const pendingCount = queue.filter(
         item => item.status === 'pending' || item.status === 'failed' || item.status === 'processing'
     ).length;
 
     return (
-        <SafeAreaView style={styles.container}>
-            {/* Header */}
-            <View style={styles.header}>
-                <TouchableOpacity
-                    style={styles.settingsButton}
-                    onPress={() => setSettingsVisible(true)}
-                >
-                    <Text style={styles.settingsIcon}>⚙️</Text>
-                </TouchableOpacity>
-                <Text style={styles.title}>Send to X4</Text>
-                <View style={styles.headerSpacer} />
-            </View>
-
+        <View style={styles.container}>
             <ScrollView
                 style={styles.content}
                 contentContainerStyle={styles.contentContainer}
@@ -496,14 +345,6 @@ export function HomeScreen() {
                     </View>
                 )}
 
-                {/* Connection Status */}
-                <View style={styles.statusContainer}>
-                    <StatusIndicator
-                        status={connectionStatus}
-                        onRetry={checkConnection}
-                    />
-                </View>
-
                 {/* Queue Section */}
                 <View style={styles.queueSection}>
                     <Text style={styles.sectionTitle}>
@@ -528,34 +369,7 @@ export function HomeScreen() {
                         </View>
                     )}
                 </View>
-
-                {/* Screensaver Section */}
-                <View style={styles.screensaverSection}>
-                    <Text style={styles.sectionTitle}>Screensavers</Text>
-                    <ScreensaverButton
-                        connected={connectionStatus.connected}
-                        onImageSelected={handleSendScreensaver}
-                        loading={screensaverLoading}
-                    />
-                </View>
-
-                {/* File List */}
-                {connectionStatus.connected && (
-                    <FileList
-                        settings={settings}
-                        connected={connectionStatus.connected}
-                        refreshTrigger={refreshKey}
-                    />
-                )}
             </ScrollView>
-
-            {/* Settings Modal */}
-            <SettingsModal
-                visible={settingsVisible}
-                onClose={() => setSettingsVisible(false)}
-                settings={settings}
-                onSave={handleSaveSettings}
-            />
 
             {/* Headless WebView for Extraction */}
             {extractionUrl && (
@@ -564,40 +378,14 @@ export function HomeScreen() {
                     onExtractionComplete={handleExtractionComplete}
                 />
             )}
-        </SafeAreaView>
+        </View>
     );
 }
-
-
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: '#1a1a2e',
-    },
-    header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingHorizontal: 20,
-        paddingVertical: 16,
-    },
-    settingsButton: {
-        width: 40,
-        height: 40,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    settingsIcon: {
-        fontSize: 20,
-    },
-    title: {
-        fontSize: 20,
-        fontWeight: '700',
-        color: '#fff',
-    },
-    headerSpacer: {
-        width: 40,
     },
     content: {
         flex: 1,
@@ -614,7 +402,6 @@ const styles = StyleSheet.create({
     buttonHalf: {
         flex: 1,
     },
-
     errorContainer: {
         marginTop: 16,
         padding: 12,
@@ -627,9 +414,6 @@ const styles = StyleSheet.create({
         color: '#f87171',
         fontSize: 14,
         textAlign: 'center',
-    },
-    statusContainer: {
-        marginTop: 24,
     },
     queueSection: {
         marginTop: 28,
@@ -644,8 +428,5 @@ const styles = StyleSheet.create({
     },
     dumpButtonContainer: {
         marginTop: 16,
-    },
-    screensaverSection: {
-        marginTop: 28,
     },
 });
