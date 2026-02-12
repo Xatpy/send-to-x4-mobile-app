@@ -18,6 +18,7 @@ import {
 import { useConnection } from '../contexts/ConnectionProvider';
 import { StatusIndicator } from '../components/StatusIndicator';
 import { getDefaultIp } from '../services/settings';
+import Constants from 'expo-constants';
 
 export function SettingsScreen() {
     const { settings, connectionStatus, saveSettings, checkConnection } = useConnection();
@@ -160,7 +161,9 @@ export function SettingsScreen() {
                 {/* About */}
                 <View style={styles.aboutSection}>
                     <Text style={styles.sectionTitle}>About</Text>
-                    <Text style={styles.aboutText}>Version 1.2</Text>
+                    <Text style={styles.aboutText}>
+                        Version {Constants.expoConfig?.version ?? 'Unknown'}
+                    </Text>
                 </View>
             </ScrollView>
         </View>
