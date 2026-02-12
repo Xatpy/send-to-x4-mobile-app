@@ -160,7 +160,7 @@ export function SettingsScreen() {
                 {/* About */}
                 <View style={styles.aboutSection}>
                     <Text style={styles.sectionTitle}>About</Text>
-                    <Text style={styles.aboutText}>Version 1.0.1</Text>
+                    <Text style={styles.aboutText}>Version 1.2</Text>
                 </View>
             </ScrollView>
         </View>
