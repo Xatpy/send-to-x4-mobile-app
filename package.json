@@ -1,12 +1,13 @@
 {
   "name": "send-to-x4-mobile-app",
-  "version": "1.0.1",
+  "version": "1.1.1",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "bump-version": "node scripts/bump_version.js"
   },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",
