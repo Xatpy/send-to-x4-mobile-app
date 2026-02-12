@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.example.sendtox4",
-      "buildNumber": "5",
+      "buildNumber": "14",
       "infoPlist": {
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
@@ -24,7 +24,7 @@
       }
     },
     "android": {
-      "versionCode": 5,
+      "versionCode": 14,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1a1a2e"
