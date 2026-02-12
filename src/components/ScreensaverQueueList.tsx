@@ -4,7 +4,6 @@ import {
     Text,
     StyleSheet,
     TouchableOpacity,
-    FlatList,
     Image,
 } from 'react-native';
 import type { QueuedScreensaver } from '../types';
@@ -28,70 +27,65 @@ export function ScreensaverQueueList({ queue, onRemove, disabled }: ScreensaverQ
         );
     }
 
-    const renderItem = ({ item }: { item: QueuedScreensaver }) => (
-        <View style={[
-            styles.item,
-            item.status === 'failed' && styles.itemFailed,
-            item.status === 'processing' && styles.itemProcessing,
-            item.status === 'success' && styles.itemSuccess,
-        ]}>
-            {/* Thumbnail */}
-            <Image source={{ uri: item.uri }} style={styles.thumbnail} />
-
-            <View style={styles.itemContent}>
-                <View style={styles.itemHeader}>
-                    <View style={[
-                        styles.statusDot,
-                        item.status === 'pending' && styles.statusPending,
-                        item.status === 'processing' && styles.statusProcessing,
-                        item.status === 'failed' && styles.statusFailed,
-                        item.status === 'success' && styles.statusSuccess,
-                    ]} />
-                    <Text style={styles.itemTitle} numberOfLines={1}>
-                        {item.filename}
-                    </Text>
-                </View>
-
-                {item.width && item.height && (
-                    <Text style={styles.itemDims}>
-                        {item.width} × {item.height}
-                    </Text>
-                )}
-
-                {item.status === 'failed' && item.error && (
-                    <Text style={styles.errorText} numberOfLines={2}>
-                        ⚠ {item.error}
-                    </Text>
-                )}
-
-                <Text style={styles.itemDate}>
-                    {formatDate(item.addedAt)}
-                </Text>
-            </View>
-
-            <TouchableOpacity
-                style={styles.removeButton}
-                onPress={() => onRemove(item.id)}
-                disabled={disabled || item.status === 'processing'}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-                <Text style={[
-                    styles.removeIcon,
-                    (disabled || item.status === 'processing') && styles.removeDisabled,
-                ]}>✕</Text>
-            </TouchableOpacity>
-        </View>
-    );
-
     return (
         <View style={styles.container}>
-            <FlatList
-                data={queue}
-                keyExtractor={item => item.id}
-                renderItem={renderItem}
-                scrollEnabled={false}
-                ItemSeparatorComponent={() => <View style={styles.separator} />}
-            />
+            {queue.map((item, index) => (
+                <React.Fragment key={item.id}>
+                    {index > 0 && <View style={styles.separator} />}
+                    <View style={[
+                        styles.item,
+                        item.status === 'failed' && styles.itemFailed,
+                        item.status === 'processing' && styles.itemProcessing,
+                        item.status === 'success' && styles.itemSuccess,
+                    ]}>
+                        {/* Thumbnail */}
+                        <Image source={{ uri: item.uri }} style={styles.thumbnail} />
+
+                        <View style={styles.itemContent}>
+                            <View style={styles.itemHeader}>
+                                <View style={[
+                                    styles.statusDot,
+                                    item.status === 'pending' && styles.statusPending,
+                                    item.status === 'processing' && styles.statusProcessing,
+                                    item.status === 'failed' && styles.statusFailed,
+                                    item.status === 'success' && styles.statusSuccess,
+                                ]} />
+                                <Text style={styles.itemTitle} numberOfLines={1}>
+                                    {item.filename}
+                                </Text>
+                            </View>
+
+                            {item.width && item.height && (
+                                <Text style={styles.itemDims}>
+                                    {item.width} × {item.height}
+                                </Text>
+                            )}
+
+                            {item.status === 'failed' && item.error && (
+                                <Text style={styles.errorText} numberOfLines={2}>
+                                    ⚠ {item.error}
+                                </Text>
+                            )}
+
+                            <Text style={styles.itemDate}>
+                                {formatDate(item.addedAt)}
+                            </Text>
+                        </View>
+
+                        <TouchableOpacity
+                            style={styles.removeButton}
+                            onPress={() => onRemove(item.id)}
+                            disabled={disabled || item.status === 'processing'}
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        >
+                            <Text style={[
+                                styles.removeIcon,
+                                (disabled || item.status === 'processing') && styles.removeDisabled,
+                            ]}>✕</Text>
+                        </TouchableOpacity>
+                    </View>
+                </React.Fragment>
+            ))}
         </View>
     );
 }
@@ -117,7 +111,7 @@ function formatDate(timestamp: number): string {
 const styles = StyleSheet.create({
     container: {
         borderRadius: 12,
-        overflow: 'hidden',
+        // overflow: 'hidden',
     },
     emptyContainer: {
         alignItems: 'center',

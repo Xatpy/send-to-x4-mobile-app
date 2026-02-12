@@ -4,7 +4,6 @@ import {
     Text,
     StyleSheet,
     TouchableOpacity,
-    FlatList,
 } from 'react-native';
 import type { QueuedArticle } from '../types';
 
@@ -12,9 +11,10 @@ interface QueueListProps {
     queue: QueuedArticle[];
     onRemove: (id: string) => void;
     disabled?: boolean;
+    currentUploadProgress?: number;
 }
 
-export function QueueList({ queue, onRemove, disabled }: QueueListProps) {
+export function QueueList({ queue, onRemove, disabled, currentUploadProgress }: QueueListProps) {
     if (queue.length === 0) {
         return (
             <View style={styles.emptyContainer}>
@@ -27,63 +27,67 @@ export function QueueList({ queue, onRemove, disabled }: QueueListProps) {
         );
     }
 
-    const renderItem = ({ item }: { item: QueuedArticle }) => (
-        <View style={[
-            styles.item,
-            item.status === 'failed' && styles.itemFailed,
-            item.status === 'processing' && styles.itemProcessing,
-        ]}>
-            <View style={styles.itemContent}>
-                <View style={styles.itemHeader}>
-                    <View style={[
-                        styles.statusDot,
-                        item.status === 'pending' && styles.statusPending,
-                        item.status === 'processing' && styles.statusProcessing,
-                        item.status === 'failed' && styles.statusFailed,
-                    ]} />
-                    <Text style={styles.itemTitle} numberOfLines={1}>
-                        {item.title || item.url}
-                    </Text>
-                </View>
-
-                <Text style={styles.itemUrl} numberOfLines={1}>
-                    {item.url}
-                </Text>
-
-                {item.status === 'failed' && item.errorMessage && (
-                    <Text style={styles.errorText} numberOfLines={2}>
-                        ⚠ {item.errorMessage}
-                    </Text>
-                )}
-
-                <Text style={styles.itemDate}>
-                    {formatDate(item.addedAt)}
-                </Text>
-            </View>
-
-            <TouchableOpacity
-                style={styles.removeButton}
-                onPress={() => onRemove(item.id)}
-                disabled={disabled || item.status === 'processing'}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-                <Text style={[
-                    styles.removeIcon,
-                    (disabled || item.status === 'processing') && styles.removeDisabled,
-                ]}>✕</Text>
-            </TouchableOpacity>
-        </View>
-    );
+    console.log('[QueueList] Rendering items:', queue.length, JSON.stringify(queue.map(i => ({ id: i.id, title: i.title, url: i.url }))));
 
     return (
         <View style={styles.container}>
-            <FlatList
-                data={queue}
-                keyExtractor={item => item.id}
-                renderItem={renderItem}
-                scrollEnabled={false}
-                ItemSeparatorComponent={() => <View style={styles.separator} />}
-            />
+            {queue.map((item, index) => (
+                <View key={item.id}>
+                    {index > 0 && <View style={styles.separator} />}
+                    <View style={[
+                        styles.item,
+                        item.status === 'failed' && styles.itemFailed,
+                        item.status === 'processing' && styles.itemProcessing,
+                    ]}>
+                        <View style={styles.itemContent}>
+                            <View style={styles.itemHeader}>
+                                <View style={[
+                                    styles.statusDot,
+                                    item.status === 'pending' && styles.statusPending,
+                                    item.status === 'processing' && styles.statusProcessing,
+                                    item.status === 'failed' && styles.statusFailed,
+                                ]} />
+                                <Text style={styles.itemTitle} numberOfLines={1}>
+                                    {item.title || 'Untitled File'}
+                                </Text>
+                            </View>
+
+                            <Text style={styles.itemUrl} numberOfLines={1}>
+                                {item.url || 'No path'}
+                            </Text>
+
+                            {/* Progress Bar */}
+                            {item.status === 'processing' && currentUploadProgress !== undefined && (
+                                <View style={styles.progressContainer}>
+                                    <View style={[styles.progressBar, { width: `${currentUploadProgress}%` }]} />
+                                </View>
+                            )}
+
+                            {item.status === 'failed' && item.errorMessage && (
+                                <Text style={styles.errorText} numberOfLines={2}>
+                                    ⚠ {item.errorMessage}
+                                </Text>
+                            )}
+
+                            <Text style={styles.itemDate}>
+                                {formatDate(item.addedAt)}
+                            </Text>
+                        </View>
+
+                        <TouchableOpacity
+                            style={styles.removeButton}
+                            onPress={() => onRemove(item.id)}
+                            disabled={disabled || item.status === 'processing'}
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        >
+                            <Text style={[
+                                styles.removeIcon,
+                                (disabled || item.status === 'processing') && styles.removeDisabled,
+                            ]}>✕</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            ))}
         </View>
     );
 }
@@ -109,7 +113,7 @@ function formatDate(timestamp: number): string {
 const styles = StyleSheet.create({
     container: {
         borderRadius: 12,
-        overflow: 'hidden',
+        // overflow: 'hidden', // Removed to prevent clipping on Android
     },
     emptyContainer: {
         alignItems: 'center',
@@ -143,6 +147,7 @@ const styles = StyleSheet.create({
         paddingVertical: 12,
         paddingHorizontal: 14,
         borderRadius: 10,
+        minHeight: 70, // Ensure height even if text is empty/collapsed
     },
     itemFailed: {
         backgroundColor: 'rgba(248, 113, 113, 0.08)',
@@ -219,5 +224,17 @@ const styles = StyleSheet.create({
     },
     separator: {
         height: 6,
+    },
+    progressContainer: {
+        height: 4,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        borderRadius: 2,
+        marginTop: 8,
+        marginRight: 10, // Match other text margins? Or full width?
+        overflow: 'hidden',
+    },
+    progressBar: {
+        height: '100%',
+        backgroundColor: '#6c63ff',
     },
 });

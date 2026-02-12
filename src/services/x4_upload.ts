@@ -37,6 +37,8 @@ export async function uploadToStock(
     const baseUrl = getDeviceBaseUrl(ip);
 
     try {
+        console.log(`[Upload] Starting Stock upload: filename=${filename}, dataSize=${epubData.length}, ip=${ip}`);
+
         // 1. Ensure folder exists
         const folderReady = await ensureFolderExistsStock(ip, TARGET_FOLDER);
 
@@ -44,10 +46,16 @@ export async function uploadToStock(
         const path = folderReady
             ? `/${TARGET_FOLDER}/${filename}`
             : `/${filename}`;
+        console.log(`[Upload] Stock folder ready: ${folderReady}, path: ${path}`);
 
         // 3. Write to temp file
         tempFile = new File(Paths.cache, `upload_stock_${Date.now()}_${filename}`);
         await tempFile.write(epubData);
+
+        // Verify write
+        if (tempFile.size !== epubData.length) {
+            console.warn(`[Upload] Stock temp file size mismatch: expected ${epubData.length}, got ${tempFile.size}`);
+        }
 
         // 4. Upload file
         const formData = new FormData();
@@ -61,28 +69,36 @@ export async function uploadToStock(
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
-        const response = await fetch(`${baseUrl}/edit`, {
+        const uploadUrl = `${baseUrl}/edit`;
+        console.log(`[Upload] Sending Stock POST to: ${uploadUrl}`);
+
+        const response = await fetch(uploadUrl, {
             method: 'POST',
             body: formData,
             headers: {
                 'Accept': '*/*',
-                'Content-Type': 'multipart/form-data',
             },
             signal: controller.signal,
         });
 
         clearTimeout(timeout);
 
+        // Log response details
+        let responseBody = '';
+        try { responseBody = await response.text(); } catch (e) { /* ignore */ }
+        console.log(`[Upload] Stock Response: status=${response.status}, body=${responseBody.substring(0, 500)}`);
+
         if (response.ok) {
             return { success: true };
         } else {
             return {
                 success: false,
-                error: `Upload failed: HTTP ${response.status}`
+                error: `Upload failed: HTTP ${response.status} — ${responseBody.substring(0, 200)}`
             };
         }
 
     } catch (error) {
+        console.warn(`[Upload] Stock exception during upload:`, error);
         return handleUploadError(error);
     } finally {
         // Clean up temp file

@@ -147,6 +147,15 @@ export async function resetFailedItems(): Promise<void> {
 }
 
 /**
+ * Clear the entire queue
+ */
+export async function clearQueue(): Promise<void> {
+    return withLock(async () => {
+        await writeQueue([]);
+    });
+}
+
+/**
  * Extract a display-friendly title from a URL
  */
 function extractDisplayTitle(url: string): string {

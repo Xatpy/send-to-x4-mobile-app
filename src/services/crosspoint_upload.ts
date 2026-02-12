@@ -1,4 +1,4 @@
-import { File, Paths } from 'expo-file-system';
+import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 import type { UploadResult, RemoteFile } from '../types';
 import { getDeviceBaseUrl } from './settings';
 
@@ -18,81 +18,145 @@ function parseDateFromFilename(filename: string): number {
 
 
 const TARGET_FOLDER = 'send-to-x4';
-const TIMEOUT_MS = 30000;
+const TIMEOUT_MS = 60000; // Increased for WS upload
+
+// Helper: Base64 to Uint8Array
+function base64ToUint8Array(base64: string): Uint8Array {
+    const binaryString = atob(base64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
+}
 
 /**
- * Upload EPUB to X4 device with CrossPoint firmware
- * 
- * CrossPoint firmware API:
- * - GET /api/files?path=/ - List directory
- * - POST /mkdir - Create folder (FormData: name, path)
- * - POST /upload?path=/folder - Upload file (FormData: file)
- * - POST /delete - Delete file/folder
+ * Upload binary data via WebSocket (Port 81)
+ * Protocol: 
+ * 1. Connect ws://IP:81/
+ * 2. Send "START:filename:size:path"
+ * 3. Wait for "READY"
+ * 4. Send binary chunks
+ * 5. Wait for "DONE" or "ERROR:..."
  */
+async function uploadViaWebSocket(
+    ip: string,
+    filename: string,
+    data: Uint8Array,
+    targetPath: string,
+    onProgress?: (percent: number) => void
+): Promise<UploadResult> {
+    return new Promise((resolve) => {
+        const wsUrl = `ws://${ip}:81/`;
+        console.log(`[WS] Connecting to ${wsUrl}`);
+        const ws = new WebSocket(wsUrl);
+
+        // Safety timeout
+        const timeout = setTimeout(() => {
+            if (ws.readyState === WebSocket.OPEN) ws.close();
+            resolve({ success: false, error: 'WebSocket upload timed out' });
+        }, TIMEOUT_MS);
+
+        ws.onopen = () => {
+            console.log(`[WS] Connected. Sending START command for ${filename} (${data.length} bytes)`);
+            ws.send(`START:${filename}:${data.length}:${targetPath}`);
+        };
+
+        ws.onmessage = (e) => {
+            const msg = e.data;
+            // console.log(`[WS] Message: ${msg}`);
+
+            if (msg === 'READY') {
+                // console.log('[WS] Server READY. Sending chunks...');
+                // Send in 4KB chunks
+                const CHUNK_SIZE = 4096;
+                let offset = 0;
+
+                // We'll use a recursive function or loop to send chunks to avoid blocking UI too much
+                const sendChunks = async () => {
+                    try {
+                        while (offset < data.length && ws.readyState === WebSocket.OPEN) {
+                            const end = Math.min(offset + CHUNK_SIZE, data.length);
+                            const chunk = data.slice(offset, end);
+                            ws.send(chunk);
+                            offset += CHUNK_SIZE;
+
+                            // Small yield every few chunks to allow UI updates / WebSocket processing
+                            if (offset % (CHUNK_SIZE * 10) === 0) {
+                                await new Promise(r => setTimeout(r, 0));
+                            }
+                        }
+                        // console.log('[WS] All chunks sent. Waiting for DONE...');
+                    } catch (err) {
+                        console.warn('[WS] Error sending chunks:', err);
+                        ws.close();
+                        clearTimeout(timeout);
+                        resolve({ success: false, error: 'Error sending binary data' });
+                    }
+                };
+                sendChunks();
+
+            } else if (msg === 'DONE') {
+                // console.log('[WS] Upload DONE!');
+                clearTimeout(timeout);
+                ws.close();
+                resolve({ success: true });
+            } else if (typeof msg === 'string' && msg.startsWith('ERROR:')) {
+                console.warn(`[WS] Server reported error: ${msg}`);
+                clearTimeout(timeout);
+                ws.close();
+                resolve({ success: false, error: msg.replace('ERROR:', '').trim() });
+                resolve({ success: false, error: msg.replace('ERROR:', '').trim() });
+            } else if (typeof msg === 'string' && msg.startsWith('PROGRESS:')) {
+                // Format: PROGRESS:current:total
+                const parts = msg.split(':');
+                if (parts.length === 3 && onProgress) {
+                    const current = parseInt(parts[1], 10);
+                    const total = parseInt(parts[2], 10);
+                    if (total > 0) {
+                        const percent = Math.min(100, Math.round((current / total) * 100));
+                        onProgress(percent);
+                    }
+                }
+            }
+        };
+
+        ws.onerror = (e) => {
+            console.warn('[WS] Error event:', e);
+            clearTimeout(timeout);
+            // Don't resolve here immediately, wait for close or timeout often safer, but let's resolve if it failed early
+            resolve({ success: false, error: 'WebSocket connection failed' });
+        };
+
+        ws.onclose = (e) => {
+            console.log(`[WS] Closed: ${e.code} ${e.reason}`);
+            // If we haven't resolved yet (e.g. abrupt close without DONE), resolve as fail
+            // But we need to track if we already resolved.
+            // Since Promise can only resolve once, calling resolve again does nothing.
+            resolve({ success: false, error: 'Connection closed unexpectedly' });
+        };
+    });
+}
+
 export async function uploadToCrossPoint(
     ip: string,
     epubData: Uint8Array,
-    filename: string
+    filename: string,
+    onProgress?: (percent: number) => void
 ): Promise<UploadResult> {
-    let tempFile: File | null = null;
-    const baseUrl = getDeviceBaseUrl(ip);
-
     try {
-        // 1. Ensure folder exists
-        const folderReady = await ensureFolderExistsCrossPoint(ip, TARGET_FOLDER);
-        const uploadPath = folderReady ? `/${TARGET_FOLDER}` : `/`;
+        console.log(`[Upload] Starting CrossPoint upload (WS): filename=${filename}, dataSize=${epubData.length}, ip=${ip}`);
 
-        // 2. Write to temp file (avoiding Blob crash)
-        tempFile = new File(Paths.cache, `upload_${Date.now()}_${filename}`);
-        await tempFile.write(epubData);
+        // 1. Ensure folder exists (HTTP fallback for mkdir is fine)
+        await ensureFolderExistsCrossPoint(ip, TARGET_FOLDER);
 
-        // 3. Upload using file URI
-        const formData = new FormData();
-        // @ts-ignore - React Native FormData support URI object
-        formData.append('file', {
-            uri: tempFile.uri,
-            name: filename,
-            type: 'application/epub+zip',
-        });
-
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
-        const response = await fetch(
-            `${baseUrl}/upload?path=${encodeURIComponent(uploadPath)}`,
-            {
-                method: 'POST',
-                body: formData,
-                headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'multipart/form-data',
-                },
-                signal: controller.signal,
-            }
-        );
-
-        clearTimeout(timeout);
-
-        if (response.ok) {
-            return { success: true };
-        } else {
-            return {
-                success: false,
-                error: `Upload failed: HTTP ${response.status}`
-            };
-        }
+        // 2. Upload via WebSocket
+        return await uploadViaWebSocket(ip, filename, epubData, `/${TARGET_FOLDER}`, onProgress);
 
     } catch (error) {
+        console.warn(`[Upload] Exception during upload:`, error);
         return handleUploadError(error);
-    } finally {
-        // Clean up temp file
-        if (tempFile && tempFile.exists) {
-            try {
-                await tempFile.delete();
-            } catch (e) {
-                console.warn('Failed to delete temp file:', e);
-            }
-        }
     }
 }
 
@@ -102,53 +166,32 @@ export async function uploadToCrossPoint(
 export async function uploadLocalFileToCrossPoint(
     ip: string,
     fileUri: string,
-    filename: string
+    filename: string,
+    onProgress?: (percent: number) => void
 ): Promise<UploadResult> {
-    const baseUrl = getDeviceBaseUrl(ip);
-    const targetPath = `/${TARGET_FOLDER}`;
-
     try {
+        console.log(`[Upload] Starting local file upload (WS): filename=${filename}, fileUri=${fileUri}, ip=${ip}`);
+
         // 1. Ensure folder exists
         const folderReady = await ensureFolderExistsCrossPoint(ip, TARGET_FOLDER);
-        const uploadPath = folderReady ? targetPath : `/`;
+        console.log(`[Upload] Folder ready: ${folderReady}`);
 
-        // 2. Upload directly from the source URI
-        const formData = new FormData();
-        // @ts-ignore - React Native FormData support URI object
-        formData.append('file', {
-            uri: fileUri,
-            name: filename,
-            type: 'application/epub+zip', // or generic application/octet-stream
+        // 2. Read file as Base64 (using Expo FileSystem Legacy)
+        // Note: This reads entire file into memory. For very large files this might be an issue,
+        // but EPUBs are usually small (<100MB).
+        const base64 = await readAsStringAsync(fileUri, {
+            encoding: EncodingType.Base64
         });
 
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+        // 3. Convert to Uint8Array
+        const data = base64ToUint8Array(base64);
+        console.log(`[Upload] Read local file: ${data.length} bytes`);
 
-        const response = await fetch(
-            `${baseUrl}/upload?path=${encodeURIComponent(uploadPath)}`,
-            {
-                method: 'POST',
-                body: formData,
-                headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'multipart/form-data',
-                },
-                signal: controller.signal,
-            }
-        );
-
-        clearTimeout(timeout);
-
-        if (response.ok) {
-            return { success: true };
-        } else {
-            return {
-                success: false,
-                error: `Upload failed: HTTP ${response.status}`
-            };
-        }
+        // 4. Upload via WebSocket
+        return await uploadViaWebSocket(ip, filename, data, `/${TARGET_FOLDER}`, onProgress);
 
     } catch (error) {
+        console.warn(`[Upload] Local file exception:`, error);
         return handleUploadError(error);
     }
 }
@@ -338,13 +381,10 @@ const SLEEP_FOLDER = 'sleep';
 export async function uploadScreensaverToCrossPoint(
     ip: string,
     bmpData: Uint8Array,
-    filename: string
+    filename: string,
+    onProgress?: (percent: number) => void
 ): Promise<UploadResult> {
-    let tempFile: File | null = null;
-
     try {
-        const baseUrl = getDeviceBaseUrl(ip);
-
         // Ensure /sleep folder exists
         const folderReady = await ensureFolderExistsCrossPoint(ip, SLEEP_FOLDER);
         if (!folderReady) {
@@ -354,55 +394,13 @@ export async function uploadScreensaverToCrossPoint(
             };
         }
 
-        // Write BMP data to temp file
-        tempFile = new File(Paths.cache, `screensaver_${Date.now()}_${filename}`);
-        await tempFile.write(bmpData);
+        console.log(`[Upload] Uploading screensaver (WS): ${filename}`);
 
-        const formData = new FormData();
-        // @ts-ignore - React Native FormData supports URI object
-        formData.append('file', {
-            uri: tempFile.uri,
-            name: filename,
-            type: 'image/bmp',
-        });
+        // Upload via WebSocket
+        return await uploadViaWebSocket(ip, filename, bmpData, `/${SLEEP_FOLDER}`, onProgress);
 
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
-        const response = await fetch(
-            `${baseUrl}/upload?path=${encodeURIComponent('/' + SLEEP_FOLDER)}`,
-            {
-                method: 'POST',
-                body: formData,
-                headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'multipart/form-data',
-                },
-                signal: controller.signal,
-            }
-        );
-
-        clearTimeout(timeout);
-
-        if (response.ok) {
-            return { success: true };
-        } else {
-            return {
-                success: false,
-                error: `Upload failed: HTTP ${response.status}`
-            };
-        }
     } catch (error) {
         return handleUploadError(error);
-    } finally {
-        // Clean up temp file
-        if (tempFile && tempFile.exists) {
-            try {
-                await tempFile.delete();
-            } catch (e) {
-                console.warn('Failed to delete temp screensaver file:', e);
-            }
-        }
     }
 }
 

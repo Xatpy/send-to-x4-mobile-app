@@ -16,6 +16,7 @@ import {
     ScrollView,
     Alert,
     AppState as RNAppState,
+    TouchableOpacity,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
@@ -35,7 +36,8 @@ import { buildEpub } from '../services/epub_builder';
 import { uploadToStock } from '../services/x4_upload';
 import { uploadToCrossPoint } from '../services/crosspoint_upload';
 import { getCurrentIp } from '../services/settings';
-import { getQueue, addToQueue, removeFromQueue } from '../services/queue_storage';
+import { getQueue, addToQueue, removeFromQueue, clearQueue } from '../services/queue_storage';
+
 import { processQueue } from '../services/queue_processor';
 
 interface ArticlesScreenProps {
@@ -63,6 +65,7 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
         total: number;
         title?: string;
     } | undefined>();
+    const [currentUploadProgress, setCurrentUploadProgress] = useState<number | undefined>();
 
     const loadQueue = useCallback(async () => {
         const items = await getQueue();
@@ -155,9 +158,9 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
             if (result.canceled || !result.assets || result.assets.length === 0) return;
 
             const file = result.assets[0];
-            await addToQueue(file.uri, file.name, true);
+            await addToQueue(file.uri, file.name || 'Imported EPUB', true);
             await loadQueue();
-            Alert.alert('Added to Queue ✓', `"${file.name}" saved for later sending.`);
+            Alert.alert('Added to Queue ✓', `"${file.name || 'File'}" saved for later sending.`);
         } catch (error) {
             console.warn('Pick epub error:', error);
             Alert.alert('Error', 'Failed to pick EPUB file.');
@@ -197,11 +200,19 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
 
         setDumpLoading(true);
         setDumpProgress(undefined);
+        setCurrentUploadProgress(0);
 
         try {
-            const result = await processQueue(settings, (current, total, title) => {
-                setDumpProgress({ current, total, title });
-            });
+            const result = await processQueue(
+                settings,
+                (current, total, title) => {
+                    setDumpProgress({ current, total, title });
+                    setCurrentUploadProgress(0); // Reset for next item
+                },
+                (percent) => {
+                    setCurrentUploadProgress(percent);
+                }
+            );
 
             await loadQueue();
 
@@ -226,6 +237,7 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
         } finally {
             setDumpLoading(false);
             setDumpProgress(undefined);
+            setCurrentUploadProgress(undefined);
         }
     };
 
@@ -379,14 +391,30 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
 
                 {/* Queue Section */}
                 <View style={styles.queueSection}>
-                    <Text style={styles.sectionTitle}>
-                        Queue {queue.length > 0 ? `(${queue.length})` : ''}
-                    </Text>
+                    <View style={styles.queueHeader}>
+                        <Text style={styles.sectionTitle}>
+                            Queue {queue.length > 0 ? `(${queue.length})` : ''}
+                        </Text>
+                        {queue.length > 0 && (
+                            <TouchableOpacity onPress={() => Alert.alert('Clear Queue', 'Delete all items?', [
+                                { text: 'Cancel', style: 'cancel' },
+                                {
+                                    text: 'Clear All', style: 'destructive', onPress: async () => {
+                                        await clearQueue();
+                                        await loadQueue();
+                                    }
+                                }
+                            ])}>
+                                <Text style={styles.clearText}>Clear All</Text>
+                            </TouchableOpacity>
+                        )}
+                    </View>
 
                     <QueueList
                         queue={queue}
                         onRemove={handleRemoveFromQueue}
                         disabled={dumpLoading}
+                        currentUploadProgress={currentUploadProgress}
                     />
 
                     {queue.length > 0 && (
@@ -450,13 +478,24 @@ const styles = StyleSheet.create({
     queueSection: {
         marginTop: 28,
     },
+    queueHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    clearText: {
+        color: '#f87171',
+        fontSize: 12,
+        fontWeight: '600',
+    },
     sectionTitle: {
         color: 'rgba(255,255,255,0.6)',
         fontSize: 13,
         fontWeight: '700',
         textTransform: 'uppercase',
         letterSpacing: 1,
-        marginBottom: 12,
+        // marginBottom removed as it's now handled by queueHeader
     },
     dumpButtonContainer: {
         marginTop: 16,

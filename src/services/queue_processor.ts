@@ -10,6 +10,7 @@ import { getCurrentIp } from './settings';
  * Callback for progress updates during dump
  */
 export type DumpProgressCallback = (current: number, total: number, title?: string) => void;
+export type UploadProgressCallback = (percent: number) => void;
 
 /**
  * Process all pending items in the queue sequentially.
@@ -25,7 +26,8 @@ export type DumpProgressCallback = (current: number, total: number, title?: stri
  */
 export async function processQueue(
     settings: Settings,
-    onProgress?: DumpProgressCallback
+    onProgress?: DumpProgressCallback,
+    onUploadProgress?: UploadProgressCallback
 ): Promise<DumpResult> {
     const queue = await getQueue();
     const pendingItems = queue.filter(item => item.status === 'pending' || item.status === 'failed');
@@ -54,13 +56,15 @@ export async function processQueue(
         try {
             // 1. Check if local file
             if (item.isLocalFile) {
+                // console.log(`[QueueProcessor] Processing local file: ${item.url}`);
                 // Direct upload
                 if (settings.firmwareType === 'crosspoint') {
                     const filename = item.title || item.url.split('/').pop() || 'upload.epub';
                     // Ensure filename ends with .epub if not
                     const safeFilename = filename.toLowerCase().endsWith('.epub') ? filename : `${filename}.epub`;
+                    // console.log(`[QueueProcessor] Local file upload: ${safeFilename}`);
 
-                    const result = await uploadLocalFileToCrossPoint(ip, item.url, safeFilename);
+                    const result = await uploadLocalFileToCrossPoint(ip, item.url, safeFilename, onUploadProgress);
                     if (!result.success) throw new Error(result.error);
                 } else {
                     // Stock firmware doesn't support direct file upload easily without conversion?
@@ -70,19 +74,22 @@ export async function processQueue(
                 }
             } else {
                 // 1. Extract article
+                // console.log(`[QueueProcessor] Extracting article: ${item.url}`);
                 const extraction = await extractArticle(item.url);
 
                 if (!extraction.success || !extraction.article) {
                     throw new Error(extraction.error || 'Failed to extract article');
                 }
+                // console.log(`[QueueProcessor] Extraction succeeded: title="${extraction.article.title}"`);
 
                 // 2. Build EPUB
                 const epub = await buildEpub(extraction.article);
+                // console.log(`[QueueProcessor] EPUB built: filename="${epub.filename}", dataSize=${epub.data.length}, isUint8Array=${epub.data instanceof Uint8Array}`);
 
                 // 3. Upload to X4
                 let uploadResult;
                 if (settings.firmwareType === 'crosspoint') {
-                    uploadResult = await uploadToCrossPoint(ip, epub.data, epub.filename);
+                    uploadResult = await uploadToCrossPoint(ip, epub.data, epub.filename, onUploadProgress);
                 } else {
                     uploadResult = await uploadToStock(ip, epub.data, epub.filename);
                 }
@@ -90,6 +97,7 @@ export async function processQueue(
                 if (!uploadResult.success) {
                     throw new Error(uploadResult.error || 'Upload failed');
                 }
+                // console.log(`[QueueProcessor] Upload succeeded for: ${epub.filename}`);
             }
 
             // Success — remove from queue

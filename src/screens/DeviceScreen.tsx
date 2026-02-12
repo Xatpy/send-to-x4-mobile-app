@@ -40,24 +40,36 @@ export function DeviceScreen() {
         setLoading(true);
         const ip = getCurrentIp(settings);
 
-        try {
-            if (settings.firmwareType === 'crosspoint') {
-                const [articleItems, sleepItems] = await Promise.all([
-                    listCrossPointFiles(ip),
-                    listCrossPointSleepFiles(ip),
-                ]);
-                setArticles(articleItems);
-                setScreensavers(sleepItems);
-            } else {
-                const items = await listStockFiles(ip);
-                setArticles(items);
-                setScreensavers([]);
+        // Load independently to avoid one blocking the other
+        const loadArticlesPromise = (async () => {
+            try {
+                if (settings.firmwareType === 'crosspoint') {
+                    const items = await listCrossPointFiles(ip);
+                    setArticles(items);
+                } else {
+                    const items = await listStockFiles(ip);
+                    setArticles(items);
+                    setScreensavers([]); // Clear screensavers for stock
+                }
+            } catch (getError) {
+                console.warn('Failed to load articles:', getError);
+                // Keep previous articles or empty? Usually better to keep empty or show error state
             }
-        } catch (error) {
-            console.warn('Failed to load files:', error);
-        } finally {
-            setLoading(false);
-        }
+        })();
+
+        const loadScreensaversPromise = (async () => {
+            if (settings.firmwareType !== 'crosspoint') return;
+            try {
+                const items = await listCrossPointSleepFiles(ip);
+                setScreensavers(items);
+            } catch (getError) {
+                console.warn('Failed to load screensavers:', getError);
+            }
+        })();
+
+        // Wait for both to finish before hiding loader
+        await Promise.allSettled([loadArticlesPromise, loadScreensaversPromise]);
+        setLoading(false);
     }, [settings, connectionStatus.connected]);
 
     useEffect(() => {
