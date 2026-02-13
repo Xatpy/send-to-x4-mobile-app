@@ -11,6 +11,7 @@ import type { Settings, ConnectionStatus } from '../types';
 import { getSettings, saveSettings as persistSettings, getCurrentIp } from '../services/settings';
 import { checkCrossPointConnection } from '../services/crosspoint_upload';
 import { checkStockConnection } from '../services/x4_upload';
+import { ensureNearbyWifiPermission } from '../services/android_permissions';
 
 interface ConnectionContextValue {
     settings: Settings;
@@ -48,6 +49,19 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
     const checkConnection = useCallback(async () => {
         const s = settingsRef.current;
         setConnectionStatus(prev => ({ ...prev, checking: true, lastError: undefined }));
+
+        const permission = await ensureNearbyWifiPermission();
+        if (!permission.granted) {
+            const ip = getCurrentIp(s);
+            setConnectionStatus({
+                connected: false,
+                ip,
+                firmwareType: s.firmwareType,
+                checking: false,
+                lastError: permission.reason || 'Nearby devices permission is required for local Wi-Fi connection.',
+            });
+            return;
+        }
 
         const ip = getCurrentIp(s);
         let result: { success: boolean; error?: string } = { success: false, error: undefined };

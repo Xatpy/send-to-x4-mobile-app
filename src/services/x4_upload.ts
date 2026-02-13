@@ -181,7 +181,17 @@ export async function checkStockConnection(ip: string): Promise<{ success: boole
             return { success: false, error: `HTTP ${response.status}: ${response.statusText}` };
         }
     } catch (error: unknown) {
-        return { success: false, error: formatNetworkError(error, requestUrl) };
+        let details = formatNetworkError(error, requestUrl);
+        try {
+            const probeController = new AbortController();
+            const probeTimeout = setTimeout(() => probeController.abort(), 3000);
+            const probeRes = await fetch(`${baseUrl}/`, { signal: probeController.signal });
+            clearTimeout(probeTimeout);
+            details += ` | probe_root_http=${probeRes.status}`;
+        } catch (probeError) {
+            details += ` | probe_root_error=${formatNetworkError(probeError, `${baseUrl}/`)}`;
+        }
+        return { success: false, error: details };
     }
 }
 
