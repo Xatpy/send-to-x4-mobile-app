@@ -162,8 +162,8 @@ async function ensureFolderExistsStock(ip: string, folder: string): Promise<bool
  * Check if X4 Stock firmware is reachable
  */
 export async function checkStockConnection(ip: string): Promise<{ success: boolean; error?: string }> {
+    const baseUrl = getDeviceBaseUrl(ip);
     try {
-        const baseUrl = getDeviceBaseUrl(ip);
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 5000);
 
@@ -181,7 +181,7 @@ export async function checkStockConnection(ip: string): Promise<{ success: boole
     } catch (error: any) {
         let msg = error.message;
         if (msg === 'Aborted') msg = 'Connection timed out';
-        if (msg.includes('Network request failed')) msg = 'Network unreachable';
+        if (msg.includes('Network request failed')) msg = `Network unreachable (${baseUrl})`;
         return { success: false, error: msg };
     }
 }

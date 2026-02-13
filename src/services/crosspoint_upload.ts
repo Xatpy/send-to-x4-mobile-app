@@ -261,8 +261,8 @@ async function ensureFolderExistsCrossPoint(ip: string, folder: string): Promise
  * Check if X4 CrossPoint firmware is reachable
  */
 export async function checkCrossPointConnection(ip: string): Promise<{ success: boolean; error?: string }> {
+    const baseUrl = getDeviceBaseUrl(ip);
     try {
-        const baseUrl = getDeviceBaseUrl(ip);
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 5000);
 
@@ -280,7 +280,7 @@ export async function checkCrossPointConnection(ip: string): Promise<{ success: 
     } catch (error: any) {
         let msg = error.message;
         if (msg === 'Aborted') msg = 'Connection timed out';
-        if (msg.includes('Network request failed')) msg = 'Network unreachable';
+        if (msg.includes('Network request failed')) msg = `Network unreachable (${baseUrl})`;
         return { success: false, error: msg };
     }
 }
