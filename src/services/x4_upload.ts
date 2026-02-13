@@ -1,6 +1,7 @@
 import { File, Paths } from 'expo-file-system';
 import type { UploadResult, RemoteFile } from '../types';
 import { getDeviceBaseUrl } from './settings';
+import { formatNetworkError } from './network_errors';
 
 // Helper to parse date from filename "Author - YYYY-MM-DD - Title.epub"
 function parseDateFromFilename(filename: string): number {
@@ -163,11 +164,12 @@ async function ensureFolderExistsStock(ip: string, folder: string): Promise<bool
  */
 export async function checkStockConnection(ip: string): Promise<{ success: boolean; error?: string }> {
     const baseUrl = getDeviceBaseUrl(ip);
+    const requestUrl = `${baseUrl}/list?dir=/`;
     try {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 5000);
 
-        const response = await fetch(`${baseUrl}/list?dir=/`, {
+        const response = await fetch(requestUrl, {
             signal: controller.signal,
         });
 
@@ -178,11 +180,8 @@ export async function checkStockConnection(ip: string): Promise<{ success: boole
         } else {
             return { success: false, error: `HTTP ${response.status}: ${response.statusText}` };
         }
-    } catch (error: any) {
-        let msg = error.message;
-        if (msg === 'Aborted') msg = 'Connection timed out';
-        if (msg.includes('Network request failed')) msg = `Network unreachable (${baseUrl})`;
-        return { success: false, error: msg };
+    } catch (error: unknown) {
+        return { success: false, error: formatNetworkError(error, requestUrl) };
     }
 }
 
@@ -190,14 +189,14 @@ export async function checkStockConnection(ip: string): Promise<{ success: boole
  * Handle upload errors with user-friendly messages
  */
 function handleUploadError(error: unknown): UploadResult {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = formatNetworkError(error);
 
     if (message.includes('Network request failed') ||
         message.includes('fetch failed') ||
         message.includes('AbortError')) {
         return {
             success: false,
-            error: 'Cannot reach X4. Make sure you are connected to the X4 WiFi hotspot.'
+            error: `Cannot reach X4. ${message}`
         };
     }
 

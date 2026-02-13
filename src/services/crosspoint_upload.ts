@@ -1,6 +1,7 @@
 import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 import type { UploadResult, RemoteFile } from '../types';
-import { getDeviceBaseUrl } from './settings';
+import { getDeviceBaseUrl, getDeviceHostForRuntime } from './settings';
+import { formatNetworkError } from './network_errors';
 
 // Helper to parse date from filename "Author - YYYY-MM-DD - Title.epub"
 function parseDateFromFilename(filename: string): number {
@@ -146,13 +147,14 @@ export async function uploadToCrossPoint(
     onProgress?: (percent: number) => void
 ): Promise<UploadResult> {
     try {
-        console.log(`[Upload] Starting CrossPoint upload (WS): filename=${filename}, dataSize=${epubData.length}, ip=${ip}`);
+        const resolvedIp = getDeviceHostForRuntime(ip);
+        console.log(`[Upload] Starting CrossPoint upload (WS): filename=${filename}, dataSize=${epubData.length}, ip=${resolvedIp}`);
 
         // 1. Ensure folder exists (HTTP fallback for mkdir is fine)
-        await ensureFolderExistsCrossPoint(ip, TARGET_FOLDER);
+        await ensureFolderExistsCrossPoint(resolvedIp, TARGET_FOLDER);
 
         // 2. Upload via WebSocket
-        return await uploadViaWebSocket(ip, filename, epubData, `/${TARGET_FOLDER}`, onProgress);
+        return await uploadViaWebSocket(resolvedIp, filename, epubData, `/${TARGET_FOLDER}`, onProgress);
 
     } catch (error) {
         console.warn(`[Upload] Exception during upload:`, error);
@@ -170,10 +172,11 @@ export async function uploadLocalFileToCrossPoint(
     onProgress?: (percent: number) => void
 ): Promise<UploadResult> {
     try {
-        console.log(`[Upload] Starting local file upload (WS): filename=${filename}, fileUri=${fileUri}, ip=${ip}`);
+        const resolvedIp = getDeviceHostForRuntime(ip);
+        console.log(`[Upload] Starting local file upload (WS): filename=${filename}, fileUri=${fileUri}, ip=${resolvedIp}`);
 
         // 1. Ensure folder exists
-        const folderReady = await ensureFolderExistsCrossPoint(ip, TARGET_FOLDER);
+        const folderReady = await ensureFolderExistsCrossPoint(resolvedIp, TARGET_FOLDER);
         console.log(`[Upload] Folder ready: ${folderReady}`);
 
         // 2. Read file as Base64 (using Expo FileSystem Legacy)
@@ -188,7 +191,7 @@ export async function uploadLocalFileToCrossPoint(
         console.log(`[Upload] Read local file: ${data.length} bytes`);
 
         // 4. Upload via WebSocket
-        return await uploadViaWebSocket(ip, filename, data, `/${TARGET_FOLDER}`, onProgress);
+        return await uploadViaWebSocket(resolvedIp, filename, data, `/${TARGET_FOLDER}`, onProgress);
 
     } catch (error) {
         console.warn(`[Upload] Local file exception:`, error);
@@ -262,11 +265,12 @@ async function ensureFolderExistsCrossPoint(ip: string, folder: string): Promise
  */
 export async function checkCrossPointConnection(ip: string): Promise<{ success: boolean; error?: string }> {
     const baseUrl = getDeviceBaseUrl(ip);
+    const requestUrl = `${baseUrl}/api/files?path=/`;
     try {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 5000);
 
-        const response = await fetch(`${baseUrl}/api/files?path=/`, {
+        const response = await fetch(requestUrl, {
             signal: controller.signal,
         });
 
@@ -277,11 +281,8 @@ export async function checkCrossPointConnection(ip: string): Promise<{ success: 
         } else {
             return { success: false, error: `HTTP ${response.status}: ${response.statusText}` };
         }
-    } catch (error: any) {
-        let msg = error.message;
-        if (msg === 'Aborted') msg = 'Connection timed out';
-        if (msg.includes('Network request failed')) msg = `Network unreachable (${baseUrl})`;
-        return { success: false, error: msg };
+    } catch (error: unknown) {
+        return { success: false, error: formatNetworkError(error, requestUrl) };
     }
 }
 
@@ -289,14 +290,14 @@ export async function checkCrossPointConnection(ip: string): Promise<{ success: 
  * Handle upload errors with user-friendly messages
  */
 function handleUploadError(error: unknown): UploadResult {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = formatNetworkError(error);
 
     if (message.includes('Network request failed') ||
         message.includes('fetch failed') ||
         message.includes('AbortError')) {
         return {
             success: false,
-            error: 'Cannot reach X4. Make sure you are connected to the X4 WiFi hotspot.'
+            error: `Cannot reach X4. ${message}`
         };
     }
 
@@ -392,8 +393,9 @@ export async function uploadScreensaverToCrossPoint(
     onProgress?: (percent: number) => void
 ): Promise<UploadResult> {
     try {
+        const resolvedIp = getDeviceHostForRuntime(ip);
         // Ensure /sleep folder exists
-        const folderReady = await ensureFolderExistsCrossPoint(ip, SLEEP_FOLDER);
+        const folderReady = await ensureFolderExistsCrossPoint(resolvedIp, SLEEP_FOLDER);
         if (!folderReady) {
             return {
                 success: false,
@@ -401,10 +403,10 @@ export async function uploadScreensaverToCrossPoint(
             };
         }
 
-        console.log(`[Upload] Uploading screensaver (WS): ${filename}`);
+        console.log(`[Upload] Uploading screensaver (WS): ${filename}, ip=${resolvedIp}`);
 
         // Upload via WebSocket
-        return await uploadViaWebSocket(ip, filename, bmpData, `/${SLEEP_FOLDER}`, onProgress);
+        return await uploadViaWebSocket(resolvedIp, filename, bmpData, `/${SLEEP_FOLDER}`, onProgress);
 
     } catch (error) {
         return handleUploadError(error);
@@ -481,4 +483,3 @@ export async function deleteCrossPointSleepFile(ip: string, filename: string): P
         return false;
     }
 }
-

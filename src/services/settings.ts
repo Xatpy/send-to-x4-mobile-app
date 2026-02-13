@@ -47,7 +47,7 @@ export function getCurrentIp(settings: Settings): string {
     const target = settings.firmwareType === 'crosspoint'
         ? settings.crossPointIp
         : settings.stockIp;
-    return normalizeDeviceHost(target);
+    return getDeviceHostForRuntime(target);
 }
 
 /**
@@ -71,8 +71,15 @@ export function normalizeDeviceHost(value: string): string {
 }
 
 /**
+ * Resolve host to runtime-safe target.
+ */
+export function getDeviceHostForRuntime(value: string): string {
+    return normalizeDeviceHost(value);
+}
+
+/**
  * Build the base URL for device API calls.
  */
 export function getDeviceBaseUrl(value: string): string {
-    return `http://${normalizeDeviceHost(value)}`;
+    return `http://${getDeviceHostForRuntime(value)}`;
 }
