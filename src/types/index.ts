@@ -41,6 +41,7 @@ export interface ConnectionStatus {
   ip: string;
   firmwareType: 'stock' | 'crosspoint';
   checking: boolean;
+  lastError?: string;
 }
 
 // App state

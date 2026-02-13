@@ -45,7 +45,7 @@ export function StatusIndicator({ status, onRetry }: StatusIndicatorProps) {
 
             {!status.connected && !status.checking && (
                 <Text style={styles.helpText}>
-                    Connect to X4 WiFi hotspot to send files
+                    {status.lastError ? `Error: ${status.lastError}` : 'Connect to X4 WiFi hotspot to send files'}
                 </Text>
             )}
         </View>

@@ -162,7 +162,7 @@ export function SettingsScreen() {
                 <View style={styles.aboutSection}>
                     <Text style={styles.sectionTitle}>About</Text>
                     <Text style={styles.aboutText}>
-                        JAIMEEEE{Constants.expoConfig?.version ?? 'Unknown'}
+                        Version {Constants.expoConfig?.version ?? 'Unknown'}
                     </Text>
                 </View>
             </ScrollView>

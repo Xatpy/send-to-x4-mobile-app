@@ -47,22 +47,23 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
 
     const checkConnection = useCallback(async () => {
         const s = settingsRef.current;
-        setConnectionStatus(prev => ({ ...prev, checking: true }));
+        setConnectionStatus(prev => ({ ...prev, checking: true, lastError: undefined }));
 
         const ip = getCurrentIp(s);
-        let connected = false;
+        let result: { success: boolean; error?: string } = { success: false, error: undefined };
 
         if (s.firmwareType === 'crosspoint') {
-            connected = await checkCrossPointConnection(ip);
+            result = await checkCrossPointConnection(ip);
         } else {
-            connected = await checkStockConnection(ip);
+            result = await checkStockConnection(ip);
         }
 
         setConnectionStatus({
-            connected,
+            connected: result.success,
             ip,
             firmwareType: s.firmwareType,
             checking: false,
+            lastError: result.success ? undefined : (result.error || 'Unknown error'),
         });
     }, []);
 

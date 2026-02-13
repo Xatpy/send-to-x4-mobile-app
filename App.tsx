@@ -114,7 +114,7 @@ function AppContent() {
             name="Articles"
             options={{
               tabBarIcon: ({ focused }) => <TabIcon label="📄" focused={focused} />,
-              title: 'Web Articles',
+              title: 'Articles',
             }}
           >
             {() => (
