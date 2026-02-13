@@ -38,7 +38,9 @@ export function ConnectionBanner() {
             activeOpacity={0.7}
         >
             <View style={styles.dotDisconnected} />
-            <Text style={styles.disconnectedText}>Not connected</Text>
+            <Text style={styles.disconnectedText} numberOfLines={1} ellipsizeMode="tail">
+                {connectionStatus.lastError || 'Not connected'}
+            </Text>
             <Text style={styles.retryHint}>Tap to retry</Text>
         </TouchableOpacity>
     );

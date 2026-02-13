@@ -330,56 +330,105 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
         item => item.status === 'pending' || item.status === 'failed' || item.status === 'processing'
     ).length;
 
+    const [activeTab, setActiveTab] = useState<'web' | 'file'>('web');
+
+    // ... (keep existing state)
+
     return (
         <View style={styles.container}>
+            <View style={styles.headerContainer}>
+                {/* Segmented Control */}
+                <View style={styles.segmentedControl}>
+                    <TouchableOpacity
+                        style={[
+                            styles.segment,
+                            activeTab === 'web' && styles.segmentActive,
+                        ]}
+                        onPress={() => setActiveTab('web')}
+                    >
+                        <Text
+                            style={[
+                                styles.segmentText,
+                                activeTab === 'web' && styles.segmentTextActive,
+                            ]}
+                        >
+                            Web Link
+                        </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[
+                            styles.segment,
+                            activeTab === 'file' && styles.segmentActive,
+                        ]}
+                        onPress={() => setActiveTab('file')}
+                    >
+                        <Text
+                            style={[
+                                styles.segmentText,
+                                activeTab === 'file' && styles.segmentTextActive,
+                            ]}
+                        >
+                            Local File
+                        </Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+
             <ScrollView
                 style={styles.content}
                 contentContainerStyle={styles.contentContainer}
                 keyboardShouldPersistTaps="handled"
             >
-                {/* URL Input */}
-                <UrlInput
-                    value={url}
-                    onChange={setUrl}
-                    clipboardUrl={clipboardUrl}
-                    onUseClipboard={handleUseClipboard}
-                    disabled={sendLoading || dumpLoading}
-                />
+                {/* Input Section */}
+                <View style={styles.inputCard}>
+                    {activeTab === 'web' ? (
+                        <>
+                            <UrlInput
+                                value={url}
+                                onChange={setUrl}
+                                clipboardUrl={clipboardUrl}
+                                onUseClipboard={handleUseClipboard}
+                                disabled={sendLoading || dumpLoading}
+                            />
 
-                {/* Action Buttons */}
-                <View style={styles.buttonRow}>
-                    <View style={styles.buttonHalf}>
-                        <ActionButton
-                            title="SEND NOW"
-                            icon="◉"
-                            onPress={handleSendToX4}
-                            loading={sendLoading}
-                            disabled={!url.trim() || dumpLoading}
-                            variant="primary"
-                        />
-                    </View>
-                    <View style={styles.buttonHalf}>
-                        <ActionButton
-                            title="ADD TO QUEUE"
-                            icon="＋"
-                            onPress={handleAddToQueue}
-                            loading={false}
-                            disabled={!url.trim() || sendLoading || dumpLoading}
-                            variant="secondary"
-                        />
-                    </View>
-                </View>
-
-                {/* File Picker */}
-                <View style={{ marginTop: 12 }}>
-                    <ActionButton
-                        title="PICK EPUB FILE"
-                        icon="📂"
-                        onPress={handlePickEpub}
-                        loading={false}
-                        disabled={sendLoading || dumpLoading}
-                        variant="secondary"
-                    />
+                            <View style={styles.buttonRow}>
+                                <View style={styles.buttonHalf}>
+                                    <ActionButton
+                                        title="SEND NOW"
+                                        icon="◉"
+                                        onPress={handleSendToX4}
+                                        loading={sendLoading}
+                                        disabled={!url.trim() || dumpLoading}
+                                        variant="primary"
+                                    />
+                                </View>
+                                <View style={styles.buttonHalf}>
+                                    <ActionButton
+                                        title="QUEUE"
+                                        icon="＋"
+                                        onPress={handleAddToQueue}
+                                        loading={false}
+                                        disabled={!url.trim() || sendLoading || dumpLoading}
+                                        variant="secondary"
+                                    />
+                                </View>
+                            </View>
+                        </>
+                    ) : (
+                        <View style={styles.fileSection}>
+                            <Text style={styles.fileInstruction}>
+                                Select an EPUB file from your device to add to the queue.
+                            </Text>
+                            <ActionButton
+                                title="PICK EPUB FILE"
+                                icon="📂"
+                                onPress={handlePickEpub}
+                                loading={false}
+                                disabled={sendLoading || dumpLoading}
+                                variant="secondary"
+                            />
+                        </View>
+                    )}
                 </View>
 
                 {/* Error message */}
@@ -447,17 +496,66 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: '#1a1a2e',
     },
+    headerContainer: {
+        paddingHorizontal: 20,
+        paddingTop: 10,
+        paddingBottom: 4,
+        zIndex: 10,
+    },
+    segmentedControl: {
+        flexDirection: 'row',
+        backgroundColor: '#2d2d44',
+        borderRadius: 12,
+        padding: 4,
+    },
+    segment: {
+        flex: 1,
+        paddingVertical: 10,
+        alignItems: 'center',
+        borderRadius: 10,
+    },
+    segmentActive: {
+        backgroundColor: '#6c63ff',
+    },
+    segmentText: {
+        color: '#666',
+        fontSize: 14,
+        fontWeight: '600',
+    },
+    segmentTextActive: {
+        color: '#fff',
+    },
     content: {
         flex: 1,
     },
     contentContainer: {
         padding: 20,
-        paddingTop: 10,
+        paddingTop: 8,
+    },
+    inputCard: {
+        marginTop: 4,
+        marginBottom: 8,
+    },
+    fileSection: {
+        paddingVertical: 20,
+        alignItems: 'center',
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+        padding: 16,
+    },
+    fileInstruction: {
+        color: 'rgba(255,255,255,0.5)',
+        fontSize: 14,
+        textAlign: 'center',
+        marginBottom: 20,
+        lineHeight: 20,
     },
     buttonRow: {
         flexDirection: 'row',
-        marginTop: 24,
-        gap: 10,
+        marginTop: 16,
+        gap: 12,
     },
     buttonHalf: {
         flex: 1,
@@ -476,13 +574,14 @@ const styles = StyleSheet.create({
         textAlign: 'center',
     },
     queueSection: {
-        marginTop: 28,
+        marginTop: 24,
     },
     queueHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
         marginBottom: 12,
+        paddingHorizontal: 4,
     },
     clearText: {
         color: '#f87171',
@@ -495,7 +594,6 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         textTransform: 'uppercase',
         letterSpacing: 1,
-        // marginBottom removed as it's now handled by queueHeader
     },
     dumpButtonContainer: {
         marginTop: 16,
