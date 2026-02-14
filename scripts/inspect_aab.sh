@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+EXPECTED_SDK="${EXPECTED_SDK:-36}"
 
 if [ "$#" -ne 1 ]; then
   echo "Usage: $0 <path-to-aab>" >&2
@@ -74,8 +75,8 @@ echo "hermesNativeLibs=$HAS_HERMES"
 echo "jscNativeLibs=$HAS_JSC"
 
 FAIL=0
-if ! rg -q 'targetSdkVersion="35"' "$MANIFEST_TXT"; then
-  echo "[FAIL] targetSdkVersion is not 35" >&2
+if ! rg -q "targetSdkVersion=\"${EXPECTED_SDK}\"" "$MANIFEST_TXT"; then
+  echo "[FAIL] targetSdkVersion is not ${EXPECTED_SDK}" >&2
   FAIL=1
 fi
 if ! rg -q 'usesCleartextTraffic="true"' "$MANIFEST_TXT"; then
