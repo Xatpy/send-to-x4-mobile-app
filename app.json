@@ -2,7 +2,8 @@
   "expo": {
     "name": "Send to X4",
     "slug": "send-to-x4",
-    "version": "1.1.9",
+    "version": "1.1.10",
+    "jsEngine": "hermes",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "backgroundColor": "#1a1a2e",
@@ -16,7 +17,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.example.sendtox4",
-      "buildNumber": "20",
+      "buildNumber": "21",
       "infoPlist": {
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
@@ -24,7 +25,7 @@
       }
     },
     "android": {
-      "versionCode": 20,
+      "versionCode": 21,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1a1a2e"
@@ -48,6 +49,15 @@
     "scheme": "sendtox4",
     "plugins": [
       [
+        "expo-build-properties",
+        {
+          "android": {
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35
+          }
+        }
+      ],
+      [
         "expo-share-intent",
         {
           "iosActivationRules": {
@@ -67,7 +77,8 @@
         {
           "photosPermission": "Select BMP screensavers to send to your X4."
         }
-      ]
+      ],
+      "./plugins/with-local-network-security"
     ],
     "extra": {
       "eas": {
