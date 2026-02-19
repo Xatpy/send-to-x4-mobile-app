@@ -114,11 +114,13 @@ send-to-x4-mobile-app/
 
 ## 📝 EAS Project Configuration
 
-This project uses [Expo EAS](https://expo.dev/eas) for builds. The `app.json` contains the maintainer's EAS project ID. If you want to build your own version:
+This project uses [Expo EAS](https://expo.dev/eas) for builds. Build-time identifiers are read from environment variables via `app.config.ts`.
 
-1. Create a free Expo account at [expo.dev](https://expo.dev)
-2. Run `eas init` to create your own project
-3. Update the `projectId` in `app.json` → `expo.extra.eas.projectId`
+1. Copy `.env.example` to `.env`
+2. Create a free Expo account at [expo.dev](https://expo.dev)
+3. Run `eas init` to create your own project
+4. Set `EAS_PROJECT_ID` in `.env`
+5. Set your bundle ID values (`APP_BUNDLE_ID`, `APP_IOS_APP_GROUP`) in `.env`
 
 ---
 

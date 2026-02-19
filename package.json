@@ -8,10 +8,10 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "bump-version": "node scripts/bump_version.js",
-    "test:extractor-regressions": "node --test scripts/extractor.regression.test.js",
-    "test:extractor-integration": "node --test scripts/extractor.integration.test.js",
-    "test:epub-sanitizer": "node --test scripts/epub-sanitizer.regression.test.js",
-    "test:all": "node --test scripts/*.test.js"
+    "test:extractor-regressions": "node --import tsx --test scripts/extractor.regression.test.js",
+    "test:extractor-integration": "node --import tsx --test scripts/extractor.integration.test.js",
+    "test:epub-sanitizer": "node --import tsx --test scripts/epub-sanitizer.regression.test.js",
+    "test:all": "node --import tsx --test scripts/*.test.js"
   },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",
@@ -47,6 +47,7 @@
     "@types/jszip": "^3.4.0",
     "@types/react": "~19.1.0",
     "dotenv": "^17.3.1",
+    "tsx": "^4.20.5",
     "typescript": "~5.9.2"
   }
 }

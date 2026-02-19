@@ -17,16 +17,18 @@ Thanks for your interest in contributing! Whether it's a bug report, feature ide
 git clone https://github.com/Xatpy/send-to-x4-mobile-app.git
 cd send-to-x4-mobile-app
 npm install
+cp .env.example .env
 npx expo prebuild
 ```
 
 ### EAS Configuration
 
-The repo's `app.json` contains the maintainer's EAS project ID. To build your own version:
+Build-time identifiers are loaded from `.env` by `app.config.ts`. To build your own version:
 
 1. Create a free account at [expo.dev](https://expo.dev)
 2. Run `eas init` to create your own project
-3. Update `projectId` in `app.json` → `expo.extra.eas.projectId`
+3. Set `EAS_PROJECT_ID` in `.env`
+4. Set your own `APP_BUNDLE_ID` and `APP_IOS_APP_GROUP` values in `.env`
 
 ## Running & Testing
 
