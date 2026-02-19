@@ -5,12 +5,25 @@ import { buildEpub } from './epub_builder';
 import { uploadToCrossPoint, uploadLocalFileToCrossPoint } from './crosspoint_upload';
 import { uploadToStock } from './x4_upload';
 import { getCurrentIp } from './settings';
+import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
+import { deleteCachedEpub } from './queue_prefetch';
 
 /**
  * Callback for progress updates during dump
  */
 export type DumpProgressCallback = (current: number, total: number, title?: string) => void;
 export type UploadProgressCallback = (percent: number) => void;
+
+/** Decode a base64 string to Uint8Array */
+function base64ToUint8Array(base64: string): Uint8Array {
+    const binaryString = atob(base64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
+}
 
 /**
  * Process all pending items in the queue sequentially.
@@ -72,21 +85,70 @@ export async function processQueue(
                     // For now, assume CrossPoint for file uploads or fallback.
                     throw new Error('Local file upload only supported on CrossPoint firmware');
                 }
+            } else if (item.cachedEpubPath && item.cachedEpubFilename) {
+                let cachedData: Uint8Array | null = null;
+                try {
+                    // Pre-fetched EPUB exists — read from cache first.
+                    const base64 = await readAsStringAsync(item.cachedEpubPath, {
+                        encoding: EncodingType.Base64,
+                    });
+                    cachedData = base64ToUint8Array(base64);
+                } catch (cacheError) {
+                    // Cached file is missing/corrupt. Clear cache metadata and fallback to live extraction.
+                    const cacheMessage = cacheError instanceof Error ? cacheError.message : 'Unknown cache error';
+                    console.warn(`[QueueProcessor] Cached EPUB unavailable for ${item.url}. Falling back to extraction:`, cacheMessage);
+
+                    await deleteCachedEpub(item.cachedEpubPath).catch(() => { });
+                    await updateQueueItem(item.id, {
+                        cachedEpubPath: undefined,
+                        cachedEpubFilename: undefined,
+                    });
+
+                    const extraction = await extractArticle(item.url);
+                    if (!extraction.success || !extraction.article) {
+                        throw new Error(extraction.error || 'Failed to extract article');
+                    }
+
+                    const epub = await buildEpub(extraction.article);
+
+                    let fallbackUploadResult;
+                    if (settings.firmwareType === 'crosspoint') {
+                        fallbackUploadResult = await uploadToCrossPoint(ip, epub.data, epub.filename, onUploadProgress);
+                    } else {
+                        fallbackUploadResult = await uploadToStock(ip, epub.data, epub.filename);
+                    }
+
+                    if (!fallbackUploadResult.success) {
+                        throw new Error(fallbackUploadResult.error || 'Upload failed');
+                    }
+                }
+
+                if (cachedData) {
+                    // Upload failure here should not invalidate a valid cache.
+                    let uploadResult;
+                    if (settings.firmwareType === 'crosspoint') {
+                        uploadResult = await uploadToCrossPoint(ip, cachedData, item.cachedEpubFilename, onUploadProgress);
+                    } else {
+                        uploadResult = await uploadToStock(ip, cachedData, item.cachedEpubFilename);
+                    }
+
+                    if (!uploadResult.success) {
+                        throw new Error(uploadResult.error || 'Upload failed');
+                    }
+
+                    // Clean up cached file after successful upload only.
+                    await deleteCachedEpub(item.cachedEpubPath);
+                }
             } else {
-                // 1. Extract article
-                // console.log(`[QueueProcessor] Extracting article: ${item.url}`);
+                // No cache — fallback to extract + build + upload (legacy items)
                 const extraction = await extractArticle(item.url);
 
                 if (!extraction.success || !extraction.article) {
                     throw new Error(extraction.error || 'Failed to extract article');
                 }
-                // console.log(`[QueueProcessor] Extraction succeeded: title="${extraction.article.title}"`);
 
-                // 2. Build EPUB
                 const epub = await buildEpub(extraction.article);
-                // console.log(`[QueueProcessor] EPUB built: filename="${epub.filename}", dataSize=${epub.data.length}, isUint8Array=${epub.data instanceof Uint8Array}`);
 
-                // 3. Upload to X4
                 let uploadResult;
                 if (settings.firmwareType === 'crosspoint') {
                     uploadResult = await uploadToCrossPoint(ip, epub.data, epub.filename, onUploadProgress);
@@ -97,7 +159,6 @@ export async function processQueue(
                 if (!uploadResult.success) {
                     throw new Error(uploadResult.error || 'Upload failed');
                 }
-                // console.log(`[QueueProcessor] Upload succeeded for: ${epub.filename}`);
             }
 
             // Success — remove from queue

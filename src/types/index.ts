@@ -71,6 +71,8 @@ export interface QueuedArticle {
   status: 'pending' | 'processing' | 'failed';
   errorMessage?: string; // populated when status === 'failed'
   isLocalFile?: boolean; // true if this is a local .epub file (skip extraction)
+  cachedEpubPath?: string;     // local filesystem path to pre-fetched EPUB
+  cachedEpubFilename?: string; // original EPUB filename for upload
 }
 
 // Result of a batch dump operation

@@ -56,6 +56,13 @@ export function QueueList({ queue, onRemove, disabled, currentUploadProgress }: 
                                 {item.url || 'No path'}
                             </Text>
 
+                            {/* Offline readiness indicator */}
+                            {!item.isLocalFile && (
+                                <Text style={item.cachedEpubPath ? styles.cachedHint : styles.notCachedHint} numberOfLines={1}>
+                                    {item.cachedEpubPath ? '📥 Downloaded — ready offline' : '⏳ Not downloaded — needs internet to send'}
+                                </Text>
+                            )}
+
                             {/* Progress Bar */}
                             {item.status === 'processing' && currentUploadProgress !== undefined && (
                                 <View style={styles.progressContainer}>
@@ -236,5 +243,17 @@ const styles = StyleSheet.create({
     progressBar: {
         height: '100%',
         backgroundColor: '#6c63ff',
+    },
+    cachedHint: {
+        color: 'rgba(74, 222, 128, 0.7)',
+        fontSize: 11,
+        marginTop: 3,
+        marginLeft: 16,
+    },
+    notCachedHint: {
+        color: 'rgba(251, 191, 36, 0.6)',
+        fontSize: 11,
+        marginTop: 3,
+        marginLeft: 16,
     },
 });

@@ -21,6 +21,13 @@ function parseDateFromFilename(filename: string): number {
 const TARGET_FOLDER = 'send-to-x4';
 const TIMEOUT_MS = 30000;
 
+function getMimeTypeForFilename(filename: string): string {
+    const lower = filename.toLowerCase();
+    if (lower.endsWith('.txt')) return 'text/plain';
+    if (lower.endsWith('.epub')) return 'application/epub+zip';
+    return 'application/octet-stream';
+}
+
 /**
  * Upload EPUB to X4 device with Stock firmware
  * 
@@ -60,11 +67,12 @@ export async function uploadToStock(
 
         // 4. Upload file
         const formData = new FormData();
+        const mimeType = getMimeTypeForFilename(filename);
         // @ts-ignore
         formData.append('data', {
             uri: tempFile.uri,
             name: path,
-            type: 'application/epub+zip',
+            type: mimeType,
         });
 
         const controller = new AbortController();
@@ -239,7 +247,7 @@ export async function listStockFiles(ip: string): Promise<RemoteFile[]> {
         if (!Array.isArray(items)) return [];
 
         return items
-            .filter((item: any) => item.type === 'file' && item.name.endsWith('.epub'))
+            .filter((item: any) => item.type === 'file' && (item.name.endsWith('.epub') || item.name.endsWith('.txt')))
             .map((item: any) => ({
                 name: decodeURIComponent(item.name),
                 rawName: item.name,

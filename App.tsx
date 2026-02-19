@@ -13,6 +13,7 @@ import { ArticlesScreen } from './src/screens/ArticlesScreen';
 import { ScreensaversScreen } from './src/screens/ScreensaversScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import { DeviceScreen } from './src/screens/DeviceScreen';
+import { NotesScreen } from './src/screens/NotesScreen';
 import { isValidUrl } from './src/utils/sanitizer';
 
 // Keep the splash screen visible while we fetch resources
@@ -138,6 +139,14 @@ function AppContent() {
               />
             )}
           </Tab.Screen>
+
+          <Tab.Screen
+            name="Notes"
+            component={NotesScreen}
+            options={{
+              tabBarIcon: ({ focused }) => <TabIcon label="📝" focused={focused} />,
+            }}
+          />
 
           <Tab.Screen
             name="Device"

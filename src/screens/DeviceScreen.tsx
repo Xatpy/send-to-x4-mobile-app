@@ -2,7 +2,7 @@
  * DeviceScreen — Tab showing files on the connected X4 device.
  *
  * Two sections:
- *   - Articles: files in /send-to-x4 (.epub)
+ *   - Articles: files in /send-to-x4 (.epub, .txt)
  *   - Screensavers: files in /sleep (.bmp)
  *
  * Only accessible when device is connected.

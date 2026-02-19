@@ -37,6 +37,7 @@ import { uploadToStock } from '../services/x4_upload';
 import { uploadToCrossPoint } from '../services/crosspoint_upload';
 import { getCurrentIp } from '../services/settings';
 import { getQueue, addToQueue, removeFromQueue, clearQueue } from '../services/queue_storage';
+import { prefetchArticle } from '../services/queue_prefetch';
 
 import { processQueue } from '../services/queue_processor';
 
@@ -66,6 +67,7 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
         title?: string;
     } | undefined>();
     const [currentUploadProgress, setCurrentUploadProgress] = useState<number | undefined>();
+    const [queueLoading, setQueueLoading] = useState(false);
 
     const loadQueue = useCallback(async () => {
         const items = await getQueue();
@@ -137,14 +139,31 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
             return;
         }
 
+        setQueueLoading(true);
         try {
-            await addToQueue(targetUrl);
-            setUrl('');
-            await loadQueue();
-            Alert.alert('Added to Queue ✓', 'Article saved for later sending.');
+            // Pre-fetch: extract + build EPUB now while we have internet
+            const prefetch = await prefetchArticle(targetUrl);
+
+            if (prefetch.success && prefetch.path && prefetch.filename) {
+                await addToQueue(targetUrl, prefetch.title, false, prefetch.path, prefetch.filename);
+                setUrl('');
+                await loadQueue();
+                Alert.alert('Downloaded & Queued ✓', `"${prefetch.title || 'Article'}" is ready to send offline.`);
+            } else {
+                // Fallback: queue URL only (will need internet at send time)
+                await addToQueue(targetUrl);
+                setUrl('');
+                await loadQueue();
+                Alert.alert(
+                    'Queued (not downloaded)',
+                    `Could not download the article now: ${prefetch.error || 'Unknown error'}. It will be fetched when you send.`
+                );
+            }
         } catch (error) {
             console.warn('Failed to add to queue:', error);
             Alert.alert('Error', 'Failed to save article to queue.');
+        } finally {
+            setQueueLoading(false);
         }
     };
 
@@ -168,9 +187,22 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
     };
 
     const handleAddToQueueFromShare = async (sharedUrlValue: string) => {
-        await addToQueue(sharedUrlValue);
-        await loadQueue();
-        Alert.alert('Added to Queue ✓', 'Shared article saved for later sending.');
+        setQueueLoading(true);
+        try {
+            const prefetch = await prefetchArticle(sharedUrlValue);
+
+            if (prefetch.success && prefetch.path && prefetch.filename) {
+                await addToQueue(sharedUrlValue, prefetch.title, false, prefetch.path, prefetch.filename);
+                await loadQueue();
+                Alert.alert('Downloaded & Queued ✓', `"${prefetch.title || 'Article'}" is ready to send offline.`);
+            } else {
+                await addToQueue(sharedUrlValue);
+                await loadQueue();
+                Alert.alert('Queued (not downloaded)', 'Article will be fetched when you send.');
+            }
+        } finally {
+            setQueueLoading(false);
+        }
     };
 
     const handleRemoveFromQueue = async (id: string) => {
@@ -404,11 +436,11 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
                                 </View>
                                 <View style={styles.buttonHalf}>
                                     <ActionButton
-                                        title="QUEUE"
+                                        title={queueLoading ? 'DOWNLOADING...' : 'QUEUE'}
                                         icon="＋"
                                         onPress={handleAddToQueue}
-                                        loading={false}
-                                        disabled={!url.trim() || sendLoading || dumpLoading}
+                                        loading={queueLoading}
+                                        disabled={!url.trim() || sendLoading || dumpLoading || queueLoading}
                                         variant="secondary"
                                     />
                                 </View>

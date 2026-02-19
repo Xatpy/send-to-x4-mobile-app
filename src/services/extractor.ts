@@ -49,78 +49,102 @@ export async function extractArticle(url: string): Promise<ExtractionResult> {
         if (__DEV__) console.log('[Extractor] Running Readability...');
         const reader = new Readability(document as unknown as Document);
         const parsed = reader.parse();
+        const readabilityAssessment = parsed?.textContent
+            ? assessAggressiveCandidate(parsed.textContent)
+            : { isContentLike: false };
+        const archiveUrl = isArchiveUrl(url);
 
-        // Check success
-        if (parsed && parsed.textContent && parsed.textContent.length >= 400) {
-            if (__DEV__) console.log('[Extractor] Readability success');
-
-            const title = parsed.title || document.title || 'Untitled';
-            const author = extractAuthor(parsed, document);
-            const date = extractDate(document);
-
-            const article: Article = {
-                title,
-                author,
-                date,
-                body: parsed.content || '',
-                rawText: parsed.textContent,
-                wordCount: countWords(parsed.textContent),
-                sourceUrl: url,
-            };
-
-            return { success: true, article };
-        }
-
-        // --- FALLBACK EXTRACTION ---
-        if (__DEV__) console.log('[Extractor] Readability failed or content too short. Using fallback extraction.');
-
-        // Get main content area
-        const mainContent = document.querySelector('article') ||
-            document.querySelector('[role="main"]') ||
-            document.querySelector('main') ||
-            document.body;
-
-        if (!mainContent) {
-            return {
-                success: false,
-                error: 'No content found (Fallback failed)'
-            };
-        }
-
-        // Get text content
-        const textContent = mainContent.textContent || '';
-        const wordCount = countWords(textContent);
-
-        if (textContent.length < 400) {
-            if (__DEV__) console.log('[Extractor] Fallback content too short:', textContent.length);
-            return {
-                success: false,
-                error: `Content too short (${textContent.length} chars).`
-            };
-        }
-
-        // Get metadata for fallback
-        const title = document.title || 'Untitled';
-        const author = extractAuthor({}, document);
-        const date = extractDate(document);
-
-        // Create simple HTML body
-        const paragraphs = textContent.split(/\n\n+/).filter(p => p.trim().length > 0);
-        const body = paragraphs
-            .map(p => `<p>${p.trim().replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`)
-            .join('\n');
-
-        const article: Article = {
-            title,
-            author,
-            date,
-            body,
-            rawText: textContent,
-            wordCount,
-            sourceUrl: url,
+        // Lazily compute aggressive extraction only when needed.
+        let aggressive: Article | null | undefined;
+        let aggressiveAssessment: { isContentLike: boolean } | null | undefined;
+        const getAggressive = () => {
+            if (aggressive !== undefined) {
+                return { aggressive, aggressiveAssessment };
+            }
+            aggressive = extractAggressive(document, url);
+            aggressiveAssessment = aggressive ? assessAggressiveCandidate(aggressive.rawText) : null;
+            return { aggressive, aggressiveAssessment };
         };
 
-        return { success: true, article };
+        let finalArticle: Article | null = null;
+        let usedMethod = 'readability';
+
+        // Decision Logic:
+        // If Readability succeeded and result seems substantial
+        if (
+            parsed &&
+            parsed.textContent &&
+            parsed.textContent.length >= 400 &&
+            readabilityAssessment.isContentLike
+        ) {
+            if (archiveUrl) {
+                // archive.* pages often truncate in Readability around embeds, so compare against aggressive output there.
+                const { aggressive, aggressiveAssessment } = getAggressive();
+                const switchMultiplier = 1.4;
+                if (
+                    aggressive &&
+                    aggressiveAssessment &&
+                    aggressiveAssessment.isContentLike &&
+                    aggressive.rawText.length > (parsed.textContent.length * switchMultiplier)
+                ) {
+                    if (__DEV__) console.log('[Extractor] Readability result suspicious/short compared to Aggressive scan. Switching to Aggressive.');
+                    finalArticle = aggressive;
+                    usedMethod = 'aggressive';
+                } else {
+                    if (__DEV__) console.log('[Extractor] Readability success');
+                    finalArticle = {
+                        title: parsed.title || document.title || 'Untitled',
+                        author: extractAuthor(parsed, document),
+                        date: extractDate(document),
+                        body: parsed.content || '',
+                        rawText: parsed.textContent,
+                        wordCount: countWords(parsed.textContent),
+                        sourceUrl: url,
+                    };
+                }
+            } else {
+                if (__DEV__) console.log('[Extractor] Readability success');
+                finalArticle = {
+                    title: parsed.title || document.title || 'Untitled',
+                    author: extractAuthor(parsed, document),
+                    date: extractDate(document),
+                    body: parsed.content || '',
+                    rawText: parsed.textContent,
+                    wordCount: countWords(parsed.textContent),
+                    sourceUrl: url,
+                };
+            }
+        }
+        // Readability failed or very short
+        else {
+            if (__DEV__) {
+                console.log('[Extractor] Readability failed, content too short, or looked like challenge/boilerplate.');
+            }
+
+            const { aggressive, aggressiveAssessment } = getAggressive();
+            if (aggressive && aggressiveAssessment && aggressiveAssessment.isContentLike && aggressive.rawText.length > 200) {
+                if (__DEV__) console.log('[Extractor] Using Aggressive fallback.');
+                finalArticle = aggressive;
+                usedMethod = 'aggressive';
+            } else {
+                // If aggressive also failed or was too short, try the legacy fallback
+                const legacy = extractFallback(document, url);
+                if (legacy.success && legacy.article && assessAggressiveCandidate(legacy.article.rawText).isContentLike) {
+                    finalArticle = legacy.article;
+                    usedMethod = 'legacy_fallback';
+                }
+            }
+        }
+
+        if (finalArticle) {
+            if (__DEV__) console.log(`[Extractor] Success using method: ${usedMethod}`);
+            return { success: true, article: finalArticle };
+        }
+
+        return {
+            success: false,
+            error: 'No content found (All extraction methods failed)'
+        };
 
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error';
@@ -148,6 +172,99 @@ function isTwitterUrl(url: string): boolean {
     } catch {
         return false;
     }
+}
+
+/**
+ * Check if URL is an archive mirror domain where Readability can truncate around embeds.
+ */
+function isArchiveUrl(url: string): boolean {
+    try {
+        const hostname = new URL(url).hostname.toLowerCase();
+        return hostname === 'archive.is' ||
+            hostname === 'www.archive.is' ||
+            hostname === 'archive.today' ||
+            hostname === 'archive.ph' ||
+            hostname === 'archive.li' ||
+            hostname === 'archive.vn' ||
+            hostname === 'archive.fo';
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Screen aggressive output for challenge/boilerplate pages.
+ */
+function assessAggressiveCandidate(text: string): { isContentLike: boolean } {
+    const normalized = text.toLowerCase().replace(/\s+/g, ' ').trim();
+    const challengeMarkers = [
+        'please complete the security check to access',
+        'why do i have to complete a captcha',
+        'cloudflare ray id',
+        'attention required',
+        'checking if the site connection is secure'
+    ];
+
+    const hasChallengeMarker = challengeMarkers.some(marker => normalized.includes(marker));
+    const words = countWords(text);
+
+    return {
+        isContentLike: !hasChallengeMarker && words >= 80
+    };
+}
+
+/**
+ * Fallback extraction logic (Legacy/Simple)
+ */
+function extractFallback(document: any, url: string): ExtractionResult {
+    if (__DEV__) console.log('[Extractor] Running Legacy Fallback.');
+
+    // Get main content area
+    const mainContent = document.querySelector('article') ||
+        document.querySelector('[role="main"]') ||
+        document.querySelector('main') ||
+        document.body;
+
+    if (!mainContent) {
+        return {
+            success: false,
+            error: 'No content found (Fallback failed)'
+        };
+    }
+
+    // Get text content
+    const textContent = mainContent.textContent || '';
+    const wordCount = countWords(textContent);
+
+    if (textContent.length < 200) {
+        return {
+            success: false,
+            error: `Content too short (${textContent.length} chars).`
+        };
+    }
+
+    // Get metadata for fallback
+    const title = document.title || 'Untitled';
+    const author = extractAuthor({}, document);
+    const date = extractDate(document);
+
+    // Create simple HTML body
+    const paragraphs = textContent.split(/\n\n+/).filter((p: string) => p.trim().length > 0);
+    const body = paragraphs
+        .map((p: string) => `<p>${p.trim().replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`)
+        .join('\n');
+
+    const article: Article = {
+        title,
+        author,
+        date,
+        body,
+        rawText: textContent,
+        wordCount,
+        sourceUrl: url,
+    };
+
+    return { success: true, article };
 }
 
 /**
@@ -347,3 +464,114 @@ function extractDate(document: any): string {
 function countWords(text: string): number {
     return text.trim().split(/\s+/).filter(Boolean).length;
 }
+
+/**
+ * Generic Aggressive Extractor
+ * Scans document for paragraphs, filters out menu/link-heavy items,
+ * and constructs a body from valid text blocks.
+ */
+function extractAggressive(document: any, url: string): Article | null {
+    try {
+        const validBlocks: string[] = [];
+        const validTexts: string[] = [];
+
+        // Helper to check if a node is a block-level element
+        const isBlock = (tagName: string) => {
+            return ['p', 'div', 'article', 'section', 'li', 'td', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'main'].includes(tagName.toLowerCase());
+        };
+
+        // Text Clustering Approach (Recursive, linkedom-friendly)
+        let currentCluster: string[] = [];
+
+        const flushCluster = () => {
+            if (currentCluster.length > 0) {
+                const text = currentCluster.join(' ').replace(/\s+/g, ' ').trim();
+                if (text.length > 30) {
+                    validTexts.push(text);
+                    validBlocks.push(`<p>${escapeHtml(text)}</p>`);
+                }
+                currentCluster = [];
+            }
+        };
+
+        const walk = (node: any) => {
+            if (!node) return;
+
+            if (node.nodeType === 3) { // Text Node
+                const t = node.textContent?.trim() || '';
+                if (t.length > 0) {
+                    currentCluster.push(t);
+                }
+            }
+
+            // Element Node
+            let isBlockStart = false;
+            // Note: In linkedom, nodeType might be string '1' or number 1 depending on version, generic check matches both via strict equality if typed correctly, staying safe with standard check.
+            if (node.nodeType === 1) {
+                const tagName = node.tagName.toLowerCase();
+
+                // Skip non-content tags
+                if (['script', 'style', 'nav', 'footer', 'aside', 'header', 'noscript', 'button', 'form', 'svg', 'iframe'].includes(tagName)) {
+                    flushCluster();
+                    return;
+                }
+
+                if (isBlock(tagName)) {
+                    flushCluster();
+                    isBlockStart = true;
+                }
+            }
+
+            // Recurse for ALL node types (Document, Element, etc.)
+            if (node.childNodes && node.childNodes.length > 0) {
+                for (let i = 0; i < node.childNodes.length; i++) {
+                    walk(node.childNodes[i]);
+                }
+            }
+
+            if (isBlockStart) flushCluster();
+        };
+
+        // Prefer body to avoid traversing head text nodes.
+        walk(document.body || document);
+
+        flushCluster(); // Final flush
+
+        if (validBlocks.length === 0) return null;
+
+        const bodyHtml = validBlocks.join('\n');
+
+        const rawText = validTexts.join('\n\n');
+
+        return {
+            title: document.title || 'Untitled',
+            author: extractAuthor({}, document),
+            date: extractDate(document),
+            body: bodyHtml,
+            rawText: rawText,
+            wordCount: countWords(rawText),
+            sourceUrl: url
+        };
+
+    } catch (e) {
+        console.warn('[Extractor] Aggressive Extraction failed', e);
+        return null;
+    }
+}
+
+function escapeHtml(text: string): string {
+    return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+// Internal helpers exported for deterministic regression tests.
+export const __extractorTestUtils = {
+    isArchiveUrl,
+    assessAggressiveCandidate,
+    extractAggressive,
+    escapeHtml,
+};

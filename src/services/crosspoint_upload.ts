@@ -108,7 +108,6 @@ async function uploadViaWebSocket(
                 clearTimeout(timeout);
                 ws.close();
                 resolve({ success: false, error: msg.replace('ERROR:', '').trim() });
-                resolve({ success: false, error: msg.replace('ERROR:', '').trim() });
             } else if (typeof msg === 'string' && msg.startsWith('PROGRESS:')) {
                 // Format: PROGRESS:current:total
                 const parts = msg.split(':');
@@ -339,7 +338,7 @@ export async function listCrossPointFiles(ip: string): Promise<RemoteFile[]> {
         if (!Array.isArray(items)) return [];
 
         return items
-            .filter((item: any) => !item.isDirectory && item.name.endsWith('.epub'))
+            .filter((item: any) => !item.isDirectory && (item.name.endsWith('.epub') || item.name.endsWith('.txt')))
             .map((item: any) => ({
                 name: decodeURIComponent(item.name),
                 rawName: item.name,

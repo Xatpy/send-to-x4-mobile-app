@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { QueuedArticle } from '../types';
+import { deleteCachedEpub, clearEpubCache } from './queue_prefetch';
 
 const STORAGE_KEY = '@send-to-x4/queue';
 
@@ -73,7 +74,13 @@ export async function getQueue(): Promise<QueuedArticle[]> {
 /**
  * Add a URL or Local File to the queue
  */
-export async function addToQueue(content: string, title?: string, isLocalFile?: boolean): Promise<QueuedArticle> {
+export async function addToQueue(
+    content: string,
+    title?: string,
+    isLocalFile?: boolean,
+    cachedEpubPath?: string,
+    cachedEpubFilename?: string,
+): Promise<QueuedArticle> {
     return withLock(async () => {
         const queue = await readQueue();
 
@@ -84,6 +91,8 @@ export async function addToQueue(content: string, title?: string, isLocalFile?: 
             addedAt: Date.now(),
             status: 'pending',
             isLocalFile,
+            cachedEpubPath,
+            cachedEpubFilename,
         };
 
         queue.push(item);
@@ -98,6 +107,11 @@ export async function addToQueue(content: string, title?: string, isLocalFile?: 
 export async function removeFromQueue(id: string): Promise<void> {
     return withLock(async () => {
         const queue = await readQueue();
+        // Delete cached EPUB file if present
+        const item = queue.find(i => i.id === id);
+        if (item?.cachedEpubPath) {
+            deleteCachedEpub(item.cachedEpubPath).catch(() => { });
+        }
         const filtered = queue.filter(item => item.id !== id);
         await writeQueue(filtered);
     });
@@ -109,7 +123,7 @@ export async function removeFromQueue(id: string): Promise<void> {
  */
 export async function updateQueueItem(
     id: string,
-    updates: Partial<Pick<QueuedArticle, 'status' | 'errorMessage'>>
+    updates: Partial<Pick<QueuedArticle, 'status' | 'errorMessage' | 'cachedEpubPath' | 'cachedEpubFilename'>>
 ): Promise<void> {
     return withLock(async () => {
         const queue = await readQueue();
@@ -152,6 +166,8 @@ export async function resetFailedItems(): Promise<void> {
 export async function clearQueue(): Promise<void> {
     return withLock(async () => {
         await writeQueue([]);
+        // Clean up all cached EPUB files
+        await clearEpubCache();
     });
 }
 

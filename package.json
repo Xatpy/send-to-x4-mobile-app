@@ -1,13 +1,17 @@
 {
   "name": "send-to-x4-mobile-app",
-  "version": "1.1.11",
+  "version": "1.1.14",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "bump-version": "node scripts/bump_version.js"
+    "bump-version": "node scripts/bump_version.js",
+    "test:extractor-regressions": "node --test scripts/extractor.regression.test.js",
+    "test:extractor-integration": "node --test scripts/extractor.integration.test.js",
+    "test:epub-sanitizer": "node --test scripts/epub-sanitizer.regression.test.js",
+    "test:all": "node --test scripts/*.test.js"
   },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",
