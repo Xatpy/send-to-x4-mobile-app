@@ -1,0 +1,15 @@
+Send to X4
+Copyright (c) 2026 Chapiware
+
+This project is licensed under the MIT License — see the LICENSE file for details.
+
+This software uses the following open-source libraries:
+
+- React Native — MIT License — https://github.com/facebook/react-native
+- Expo — MIT License — https://github.com/expo/expo
+- Mozilla Readability — Apache 2.0 License — https://github.com/mozilla/readability
+- JSZip — MIT License — https://github.com/Stuk/jszip
+- linkedom — ISC License — https://github.com/WebReflection/linkedom
+
+"Xteink" and "X4" are trademarks of their respective owners. This project is
+not affiliated with or endorsed by Xteink.
