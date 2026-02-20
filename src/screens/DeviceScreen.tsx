@@ -22,7 +22,7 @@ import {
 
 import { useConnection } from '../contexts/ConnectionProvider';
 import type { RemoteFile } from '../types';
-import { getCurrentIp } from '../services/settings';
+import { getCurrentIp, getArticleFolder } from '../services/settings';
 import { listCrossPointFiles, deleteCrossPointFile, listCrossPointSleepFiles, deleteCrossPointSleepFile } from '../services/crosspoint_upload';
 import { listStockFiles, deleteStockFile } from '../services/x4_upload';
 
@@ -39,15 +39,16 @@ export function DeviceScreen() {
 
         setLoading(true);
         const ip = getCurrentIp(settings);
+        const articleFolder = getArticleFolder(settings);
 
         // Load independently to avoid one blocking the other
         const loadArticlesPromise = (async () => {
             try {
                 if (settings.firmwareType === 'crosspoint') {
-                    const items = await listCrossPointFiles(ip);
+                    const items = await listCrossPointFiles(ip, articleFolder);
                     setArticles(items);
                 } else {
-                    const items = await listStockFiles(ip);
+                    const items = await listStockFiles(ip, articleFolder);
                     setArticles(items);
                     setScreensavers([]); // Clear screensavers for stock
                 }
@@ -89,13 +90,14 @@ export function DeviceScreen() {
                 onPress: async () => {
                     setDeleteLoading(file.name);
                     const ip = getCurrentIp(settings);
+                    const articleFolder = getArticleFolder(settings);
                     const filename = file.rawName || file.name;
                     let success = false;
 
                     if (settings.firmwareType === 'crosspoint') {
-                        success = await deleteCrossPointFile(ip, filename);
+                        success = await deleteCrossPointFile(ip, filename, articleFolder);
                     } else {
-                        success = await deleteStockFile(ip, filename);
+                        success = await deleteStockFile(ip, filename, articleFolder);
                     }
 
                     if (success) {
@@ -163,7 +165,7 @@ export function DeviceScreen() {
                             📄  Articles ({articles.length})
                         </Text>
                     </View>
-                    <Text style={styles.sectionPath}>/send-to-x4</Text>
+                    <Text style={styles.sectionPath}>/{getArticleFolder(settings)}</Text>
 
                     {loading && articles.length === 0 ? (
                         <ActivityIndicator size="small" color="#fff" style={styles.loader} />

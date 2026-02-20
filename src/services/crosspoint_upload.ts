@@ -18,7 +18,7 @@ function parseDateFromFilename(filename: string): number {
 
 
 
-const TARGET_FOLDER = 'send-to-x4';
+const DEFAULT_TARGET_FOLDER = 'send-to-x4';
 const TIMEOUT_MS = 60000; // Increased for WS upload
 
 // Helper: Base64 to Uint8Array
@@ -143,17 +143,18 @@ export async function uploadToCrossPoint(
     ip: string,
     epubData: Uint8Array,
     filename: string,
-    onProgress?: (percent: number) => void
+    onProgress?: (percent: number) => void,
+    targetFolder: string = DEFAULT_TARGET_FOLDER
 ): Promise<UploadResult> {
     try {
         const resolvedIp = getDeviceHostForRuntime(ip);
-        console.log(`[Upload] Starting CrossPoint upload (WS): filename=${filename}, dataSize=${epubData.length}, ip=${resolvedIp}`);
+        console.log(`[Upload] Starting CrossPoint upload (WS): filename=${filename}, dataSize=${epubData.length}, ip=${resolvedIp}, folder=${targetFolder}`);
 
         // 1. Ensure folder exists (HTTP fallback for mkdir is fine)
-        await ensureFolderExistsCrossPoint(resolvedIp, TARGET_FOLDER);
+        await ensureFolderExistsCrossPoint(resolvedIp, targetFolder);
 
         // 2. Upload via WebSocket
-        return await uploadViaWebSocket(resolvedIp, filename, epubData, `/${TARGET_FOLDER}`, onProgress);
+        return await uploadViaWebSocket(resolvedIp, filename, epubData, `/${targetFolder}`, onProgress);
 
     } catch (error) {
         console.warn(`[Upload] Exception during upload:`, error);
@@ -168,14 +169,15 @@ export async function uploadLocalFileToCrossPoint(
     ip: string,
     fileUri: string,
     filename: string,
-    onProgress?: (percent: number) => void
+    onProgress?: (percent: number) => void,
+    targetFolder: string = DEFAULT_TARGET_FOLDER
 ): Promise<UploadResult> {
     try {
         const resolvedIp = getDeviceHostForRuntime(ip);
-        console.log(`[Upload] Starting local file upload (WS): filename=${filename}, fileUri=${fileUri}, ip=${resolvedIp}`);
+        console.log(`[Upload] Starting local file upload (WS): filename=${filename}, fileUri=${fileUri}, ip=${resolvedIp}, folder=${targetFolder}`);
 
         // 1. Ensure folder exists
-        const folderReady = await ensureFolderExistsCrossPoint(resolvedIp, TARGET_FOLDER);
+        const folderReady = await ensureFolderExistsCrossPoint(resolvedIp, targetFolder);
         console.log(`[Upload] Folder ready: ${folderReady}`);
 
         // 2. Read file as Base64 (using Expo FileSystem Legacy)
@@ -190,7 +192,7 @@ export async function uploadLocalFileToCrossPoint(
         console.log(`[Upload] Read local file: ${data.length} bytes`);
 
         // 4. Upload via WebSocket
-        return await uploadViaWebSocket(resolvedIp, filename, data, `/${TARGET_FOLDER}`, onProgress);
+        return await uploadViaWebSocket(resolvedIp, filename, data, `/${targetFolder}`, onProgress);
 
     } catch (error) {
         console.warn(`[Upload] Local file exception:`, error);
@@ -316,16 +318,16 @@ function handleUploadError(error: unknown): UploadResult {
 /**
  * List files in the target folder on CrossPoint firmware
  */
-export async function listCrossPointFiles(ip: string): Promise<RemoteFile[]> {
+export async function listCrossPointFiles(ip: string, targetFolder: string = DEFAULT_TARGET_FOLDER): Promise<RemoteFile[]> {
     try {
         const baseUrl = getDeviceBaseUrl(ip);
-        const folderReady = await ensureFolderExistsCrossPoint(ip, TARGET_FOLDER);
+        const folderReady = await ensureFolderExistsCrossPoint(ip, targetFolder);
         if (!folderReady) return [];
 
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 10000);
 
-        const response = await fetch(`${baseUrl}/api/files?path=/${TARGET_FOLDER}`, {
+        const response = await fetch(`${baseUrl}/api/files?path=/${targetFolder}`, {
             signal: controller.signal,
         });
 
@@ -356,10 +358,10 @@ export async function listCrossPointFiles(ip: string): Promise<RemoteFile[]> {
 /**
  * Delete a file on CrossPoint firmware
  */
-export async function deleteCrossPointFile(ip: string, filename: string): Promise<boolean> {
+export async function deleteCrossPointFile(ip: string, filename: string, targetFolder: string = DEFAULT_TARGET_FOLDER): Promise<boolean> {
     try {
         const baseUrl = getDeviceBaseUrl(ip);
-        const path = `/${TARGET_FOLDER}/${filename}`;
+        const path = `/${targetFolder}/${filename}`;
 
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 10000);

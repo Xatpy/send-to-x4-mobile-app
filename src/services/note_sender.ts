@@ -8,7 +8,7 @@
 import type { UploadResult, Settings } from '../types';
 import { uploadToCrossPoint } from './crosspoint_upload';
 import { uploadToStock } from './x4_upload';
-import { getCurrentIp } from './settings';
+import { getCurrentIp, getNoteFolder } from './settings';
 
 let lastTs = 0;
 let sameTsCounter = 0;
@@ -68,13 +68,14 @@ export async function sendNoteAsTxt(
     const filename = generateNoteFilename(title);
     const data = new TextEncoder().encode(noteText);
     const ip = getCurrentIp(settings);
+    const noteFolder = getNoteFolder(settings);
 
-    console.log(`[NoteSender] Sending note: filename=${filename}, size=${data.length} bytes, ip=${ip}`);
+    console.log(`[NoteSender] Sending note: filename=${filename}, size=${data.length} bytes, ip=${ip}, folder=${noteFolder}`);
 
     if (settings.firmwareType === 'crosspoint') {
-        return uploadToCrossPoint(ip, data, filename);
+        return uploadToCrossPoint(ip, data, filename, undefined, noteFolder);
     } else {
-        return uploadToStock(ip, data, filename);
+        return uploadToStock(ip, data, filename, noteFolder);
     }
 }
 

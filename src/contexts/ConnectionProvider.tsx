@@ -33,6 +33,8 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
         firmwareType: 'crosspoint',
         stockIp: '192.168.3.3',
         crossPointIp: 'crosspoint.local',
+        articleFolder: 'send-to-x4',
+        noteFolder: 'notes',
     });
 
     const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({
@@ -82,12 +84,12 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
     }, []);
 
     const handleSaveSettings = useCallback(async (newSettings: Settings) => {
-        await persistSettings(newSettings);
-        setSettings(newSettings);
+        const sanitized = await persistSettings(newSettings);
+        setSettings(sanitized);
         setConnectionStatus(prev => ({
             ...prev,
-            ip: getCurrentIp(newSettings),
-            firmwareType: newSettings.firmwareType,
+            ip: getCurrentIp(sanitized),
+            firmwareType: sanitized.firmwareType,
         }));
         // Re-check connection after short delay
         setTimeout(checkConnection, 100);

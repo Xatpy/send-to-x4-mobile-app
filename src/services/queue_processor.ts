@@ -4,7 +4,7 @@ import { extractArticle } from './extractor';
 import { buildEpub } from './epub_builder';
 import { uploadToCrossPoint, uploadLocalFileToCrossPoint } from './crosspoint_upload';
 import { uploadToStock } from './x4_upload';
-import { getCurrentIp } from './settings';
+import { getCurrentIp, getArticleFolder } from './settings';
 import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 import { deleteCachedEpub } from './queue_prefetch';
 
@@ -56,6 +56,7 @@ export async function processQueue(
     }
 
     const ip = getCurrentIp(settings);
+    const articleFolder = getArticleFolder(settings);
 
     for (let i = 0; i < pendingItems.length; i++) {
         const item = pendingItems[i];
@@ -77,7 +78,7 @@ export async function processQueue(
                     const safeFilename = filename.toLowerCase().endsWith('.epub') ? filename : `${filename}.epub`;
                     // console.log(`[QueueProcessor] Local file upload: ${safeFilename}`);
 
-                    const result = await uploadLocalFileToCrossPoint(ip, item.url, safeFilename, onUploadProgress);
+                    const result = await uploadLocalFileToCrossPoint(ip, item.url, safeFilename, onUploadProgress, articleFolder);
                     if (!result.success) throw new Error(result.error);
                 } else {
                     // Stock firmware doesn't support direct file upload easily without conversion?
@@ -113,9 +114,9 @@ export async function processQueue(
 
                     let fallbackUploadResult;
                     if (settings.firmwareType === 'crosspoint') {
-                        fallbackUploadResult = await uploadToCrossPoint(ip, epub.data, epub.filename, onUploadProgress);
+                        fallbackUploadResult = await uploadToCrossPoint(ip, epub.data, epub.filename, onUploadProgress, articleFolder);
                     } else {
-                        fallbackUploadResult = await uploadToStock(ip, epub.data, epub.filename);
+                        fallbackUploadResult = await uploadToStock(ip, epub.data, epub.filename, articleFolder);
                     }
 
                     if (!fallbackUploadResult.success) {
@@ -127,9 +128,9 @@ export async function processQueue(
                     // Upload failure here should not invalidate a valid cache.
                     let uploadResult;
                     if (settings.firmwareType === 'crosspoint') {
-                        uploadResult = await uploadToCrossPoint(ip, cachedData, item.cachedEpubFilename, onUploadProgress);
+                        uploadResult = await uploadToCrossPoint(ip, cachedData, item.cachedEpubFilename, onUploadProgress, articleFolder);
                     } else {
-                        uploadResult = await uploadToStock(ip, cachedData, item.cachedEpubFilename);
+                        uploadResult = await uploadToStock(ip, cachedData, item.cachedEpubFilename, articleFolder);
                     }
 
                     if (!uploadResult.success) {
@@ -151,9 +152,9 @@ export async function processQueue(
 
                 let uploadResult;
                 if (settings.firmwareType === 'crosspoint') {
-                    uploadResult = await uploadToCrossPoint(ip, epub.data, epub.filename, onUploadProgress);
+                    uploadResult = await uploadToCrossPoint(ip, epub.data, epub.filename, onUploadProgress, articleFolder);
                 } else {
-                    uploadResult = await uploadToStock(ip, epub.data, epub.filename);
+                    uploadResult = await uploadToStock(ip, epub.data, epub.filename, articleFolder);
                 }
 
                 if (!uploadResult.success) {

@@ -18,7 +18,7 @@ function parseDateFromFilename(filename: string): number {
 
 
 
-const TARGET_FOLDER = 'send-to-x4';
+const DEFAULT_TARGET_FOLDER = 'send-to-x4';
 const TIMEOUT_MS = 30000;
 
 function getMimeTypeForFilename(filename: string): string {
@@ -39,20 +39,21 @@ function getMimeTypeForFilename(filename: string): string {
 export async function uploadToStock(
     ip: string,
     epubData: Uint8Array,
-    filename: string
+    filename: string,
+    targetFolder: string = DEFAULT_TARGET_FOLDER
 ): Promise<UploadResult> {
     let tempFile: File | null = null;
     const baseUrl = getDeviceBaseUrl(ip);
 
     try {
-        console.log(`[Upload] Starting Stock upload: filename=${filename}, dataSize=${epubData.length}, ip=${ip}`);
+        console.log(`[Upload] Starting Stock upload: filename=${filename}, dataSize=${epubData.length}, ip=${ip}, folder=${targetFolder}`);
 
         // 1. Ensure folder exists
-        const folderReady = await ensureFolderExistsStock(ip, TARGET_FOLDER);
+        const folderReady = await ensureFolderExistsStock(ip, targetFolder);
 
         // 2. Determine upload path
         const path = folderReady
-            ? `/${TARGET_FOLDER}/${filename}`
+            ? `/${targetFolder}/${filename}`
             : `/${filename}`;
         console.log(`[Upload] Stock folder ready: ${folderReady}, path: ${path}`);
 
@@ -224,17 +225,17 @@ function handleUploadError(error: unknown): UploadResult {
 /**
  * List files in the target folder on Stock firmware
  */
-export async function listStockFiles(ip: string): Promise<RemoteFile[]> {
+export async function listStockFiles(ip: string, targetFolder: string = DEFAULT_TARGET_FOLDER): Promise<RemoteFile[]> {
     try {
         const baseUrl = getDeviceBaseUrl(ip);
         // Ensure folder exists first (otherwise list might fail or return 404)
-        const folderReady = await ensureFolderExistsStock(ip, TARGET_FOLDER);
+        const folderReady = await ensureFolderExistsStock(ip, targetFolder);
         if (!folderReady) return [];
 
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 10000);
 
-        const response = await fetch(`${baseUrl}/list?dir=/${TARGET_FOLDER}/`, {
+        const response = await fetch(`${baseUrl}/list?dir=/${targetFolder}/`, {
             signal: controller.signal,
         });
 
@@ -265,10 +266,10 @@ export async function listStockFiles(ip: string): Promise<RemoteFile[]> {
 /**
  * Delete a file on Stock firmware
  */
-export async function deleteStockFile(ip: string, filename: string): Promise<boolean> {
+export async function deleteStockFile(ip: string, filename: string, targetFolder: string = DEFAULT_TARGET_FOLDER): Promise<boolean> {
     try {
         const baseUrl = getDeviceBaseUrl(ip);
-        const path = `/${TARGET_FOLDER}/${filename}`;
+        const path = `/${targetFolder}/${filename}`;
 
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 10000);

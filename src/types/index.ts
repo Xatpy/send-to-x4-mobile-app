@@ -33,6 +33,8 @@ export interface Settings {
   firmwareType: 'stock' | 'crosspoint';
   stockIp: string;
   crossPointIp: string;
+  articleFolder: string;
+  noteFolder: string;
 }
 
 // Connection status

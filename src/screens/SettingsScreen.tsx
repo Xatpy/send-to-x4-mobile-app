@@ -17,7 +17,7 @@ import {
 
 import { useConnection } from '../contexts/ConnectionProvider';
 import { StatusIndicator } from '../components/StatusIndicator';
-import { getDefaultIp } from '../services/settings';
+import { getDefaultIp, getDefaultFolder } from '../services/settings';
 import Constants from 'expo-constants';
 
 export function SettingsScreen() {
@@ -26,6 +26,8 @@ export function SettingsScreen() {
     const [localFirmwareType, setLocalFirmwareType] = useState(settings.firmwareType);
     const [localStockIp, setLocalStockIp] = useState(settings.stockIp);
     const [localCrossPointIp, setLocalCrossPointIp] = useState(settings.crossPointIp);
+    const [localArticleFolder, setLocalArticleFolder] = useState(settings.articleFolder);
+    const [localNoteFolder, setLocalNoteFolder] = useState(settings.noteFolder);
     const [hasChanges, setHasChanges] = useState(false);
 
     // Sync when settings change externally
@@ -33,6 +35,8 @@ export function SettingsScreen() {
         setLocalFirmwareType(settings.firmwareType);
         setLocalStockIp(settings.stockIp);
         setLocalCrossPointIp(settings.crossPointIp);
+        setLocalArticleFolder(settings.articleFolder);
+        setLocalNoteFolder(settings.noteFolder);
         setHasChanges(false);
     }, [settings]);
 
@@ -61,13 +65,25 @@ export function SettingsScreen() {
             firmwareType: localFirmwareType,
             stockIp: localStockIp,
             crossPointIp: localCrossPointIp,
+            articleFolder: localArticleFolder,
+            noteFolder: localNoteFolder,
         });
         setHasChanges(false);
-    }, [localFirmwareType, localStockIp, localCrossPointIp, saveSettings]);
+    }, [localFirmwareType, localStockIp, localCrossPointIp, localArticleFolder, localNoteFolder, saveSettings]);
 
     const handleResetIp = () => {
         const defaultIp = getDefaultIp(localFirmwareType);
         handleIpChange(defaultIp);
+    };
+
+    const handleResetArticleFolder = () => {
+        setLocalArticleFolder(getDefaultFolder('article'));
+        setHasChanges(true);
+    };
+
+    const handleResetNoteFolder = () => {
+        setLocalNoteFolder(getDefaultFolder('note'));
+        setHasChanges(true);
     };
 
     return (
@@ -141,6 +157,44 @@ export function SettingsScreen() {
                 </View>
                 <Text style={styles.helpText}>
                     Default: {getDefaultIp(localFirmwareType)} ({localFirmwareType === 'crosspoint' ? 'CrossPoint' : 'Stock'})
+                </Text>
+
+                {/* Storage Folders */}
+                <Text style={styles.sectionTitle}>Storage Folders</Text>
+
+                <Text style={styles.fieldLabel}>Article Folder</Text>
+                <View style={styles.inputRow}>
+                    <TextInput
+                        style={styles.ipInput}
+                        value={localArticleFolder}
+                        onChangeText={(v) => { setLocalArticleFolder(v); setHasChanges(true); }}
+                        placeholder="send-to-x4"
+                        placeholderTextColor="#666"
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                    />
+                    <TouchableOpacity style={styles.resetButton} onPress={handleResetArticleFolder}>
+                        <Text style={styles.resetButtonText}>Reset</Text>
+                    </TouchableOpacity>
+                </View>
+
+                <Text style={styles.fieldLabel}>Notes Folder</Text>
+                <View style={styles.inputRow}>
+                    <TextInput
+                        style={styles.ipInput}
+                        value={localNoteFolder}
+                        onChangeText={(v) => { setLocalNoteFolder(v); setHasChanges(true); }}
+                        placeholder="notes"
+                        placeholderTextColor="#666"
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                    />
+                    <TouchableOpacity style={styles.resetButton} onPress={handleResetNoteFolder}>
+                        <Text style={styles.resetButtonText}>Reset</Text>
+                    </TouchableOpacity>
+                </View>
+                <Text style={styles.helpText}>
+                    Folder names on the device where articles and notes are stored.
                 </Text>
 
                 {/* Save Button */}
@@ -276,5 +330,12 @@ const styles = StyleSheet.create({
         color: '#666',
         fontSize: 14,
         marginBottom: 8,
+    },
+    fieldLabel: {
+        fontSize: 13,
+        fontWeight: '500',
+        color: '#888',
+        marginBottom: 8,
+        marginTop: 12,
     },
 });
