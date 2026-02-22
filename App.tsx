@@ -14,6 +14,7 @@ import { ScreensaversScreen } from './src/screens/ScreensaversScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import { DeviceScreen } from './src/screens/DeviceScreen';
 import { NotesScreen } from './src/screens/NotesScreen';
+import { SleepScreenTab } from './src/screens/SleepScreenTab';
 import { isValidUrl } from './src/utils/sanitizer';
 
 // Keep the splash screen visible while we fetch resources
@@ -145,6 +146,14 @@ function AppContent() {
             component={NotesScreen}
             options={{
               tabBarIcon: ({ focused }) => <TabIcon label="📝" focused={focused} />,
+            }}
+          />
+
+          <Tab.Screen
+            name="Sleep Screen"
+            component={SleepScreenTab}
+            options={{
+              tabBarIcon: ({ focused }) => <TabIcon label="🌙" focused={focused} />,
             }}
           />
 

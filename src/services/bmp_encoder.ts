@@ -12,8 +12,10 @@
  * Expected output file size: 54 + (1440 * 800) = 1,152,054 bytes
  */
 
-const BMP_WIDTH = 480;
-const BMP_HEIGHT = 800;
+import { X4_WIDTH_PX, X4_HEIGHT_PX } from '../x4/deviceConfig';
+
+const BMP_WIDTH = X4_WIDTH_PX;
+const BMP_HEIGHT = X4_HEIGHT_PX;
 const BITS_PER_PIXEL = 24;
 const BYTES_PER_PIXEL = 3; // BGR
 const ROW_BYTES = BMP_WIDTH * BYTES_PER_PIXEL; // 1440 (already 4-byte aligned)

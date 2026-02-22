@@ -7,6 +7,7 @@ const DEFAULTS: Settings = {
     crossPointIp: 'crosspoint.local',
     articleFolder: 'send-to-x4',
     noteFolder: 'notes',
+    useDateFolders: false,
 };
 
 const STORAGE_KEY = '@send-to-x4/settings';
@@ -126,4 +127,17 @@ export function getNoteFolder(settings: Settings): string {
  */
 export function getDefaultFolder(type: 'article' | 'note'): string {
     return type === 'article' ? DEFAULTS.articleFolder : DEFAULTS.noteFolder;
+}
+
+/**
+ * Resolve the actual target folder path.
+ * When useDateFolders is true, appends today's date as a subfolder (e.g. send-to-x4/2026-02-20).
+ */
+export function resolveTargetFolder(baseFolder: string, useDateFolders: boolean): string {
+    if (!useDateFolders) return baseFolder;
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    return `${baseFolder}/${yyyy}-${mm}-${dd}`;
 }

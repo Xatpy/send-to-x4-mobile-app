@@ -35,6 +35,7 @@ export interface Settings {
   crossPointIp: string;
   articleFolder: string;
   noteFolder: string;
+  useDateFolders: boolean;
 }
 
 // Connection status
@@ -62,6 +63,7 @@ export interface RemoteFile {
   size?: number;
   date?: string; // Parsed or raw date
   timestamp?: number; // Used for sorting
+  folder?: string; // Which folder the file lives in (for date-subfolder deletion)
 }
 
 // A queued article reference (saved for later batch sending)

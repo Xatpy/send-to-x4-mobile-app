@@ -4,7 +4,7 @@ import { extractArticle } from './extractor';
 import { buildEpub } from './epub_builder';
 import { uploadToCrossPoint, uploadLocalFileToCrossPoint } from './crosspoint_upload';
 import { uploadToStock } from './x4_upload';
-import { getCurrentIp, getArticleFolder } from './settings';
+import { getCurrentIp, getArticleFolder, resolveTargetFolder } from './settings';
 import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 import { deleteCachedEpub } from './queue_prefetch';
 
@@ -56,7 +56,7 @@ export async function processQueue(
     }
 
     const ip = getCurrentIp(settings);
-    const articleFolder = getArticleFolder(settings);
+    const articleFolder = resolveTargetFolder(getArticleFolder(settings), settings.useDateFolders);
 
     for (let i = 0; i < pendingItems.length; i++) {
         const item = pendingItems[i];

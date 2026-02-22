@@ -35,6 +35,7 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
         crossPointIp: 'crosspoint.local',
         articleFolder: 'send-to-x4',
         noteFolder: 'notes',
+        useDateFolders: false,
     });
 
     const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({

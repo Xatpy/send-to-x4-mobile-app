@@ -13,6 +13,7 @@ import {
     TouchableOpacity,
     StyleSheet,
     ScrollView,
+    Switch,
 } from 'react-native';
 
 import { useConnection } from '../contexts/ConnectionProvider';
@@ -67,9 +68,10 @@ export function SettingsScreen() {
             crossPointIp: localCrossPointIp,
             articleFolder: localArticleFolder,
             noteFolder: localNoteFolder,
+            useDateFolders: settings.useDateFolders,
         });
         setHasChanges(false);
-    }, [localFirmwareType, localStockIp, localCrossPointIp, localArticleFolder, localNoteFolder, saveSettings]);
+    }, [localFirmwareType, localStockIp, localCrossPointIp, localArticleFolder, localNoteFolder, settings.useDateFolders, saveSettings]);
 
     const handleResetIp = () => {
         const defaultIp = getDefaultIp(localFirmwareType);
@@ -196,6 +198,21 @@ export function SettingsScreen() {
                 <Text style={styles.helpText}>
                     Folder names on the device where articles and notes are stored.
                 </Text>
+
+                <View style={styles.switchRow}>
+                    <View style={styles.switchLabelWrap}>
+                        <Text style={styles.switchLabel}>Organize by date</Text>
+                        <Text style={styles.switchHelp}>Create daily subfolders (yyyy-mm-dd)</Text>
+                    </View>
+                    <Switch
+                        value={settings.useDateFolders}
+                        onValueChange={async (value) => {
+                            await saveSettings({ ...settings, useDateFolders: value });
+                        }}
+                        trackColor={{ false: '#333', true: '#6c63ff' }}
+                        thumbColor={settings.useDateFolders ? '#fff' : '#888'}
+                    />
+                </View>
 
                 {/* Save Button */}
                 {hasChanges && (
@@ -337,5 +354,26 @@ const styles = StyleSheet.create({
         color: '#888',
         marginBottom: 8,
         marginTop: 12,
+    },
+    switchRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginTop: 16,
+        paddingVertical: 8,
+    },
+    switchLabelWrap: {
+        flex: 1,
+        marginRight: 12,
+    },
+    switchLabel: {
+        color: '#fff',
+        fontSize: 15,
+        fontWeight: '500',
+    },
+    switchHelp: {
+        color: '#888',
+        fontSize: 12,
+        marginTop: 2,
     },
 });

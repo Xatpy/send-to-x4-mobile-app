@@ -22,9 +22,11 @@ import {
 
 import { useConnection } from '../contexts/ConnectionProvider';
 import type { RemoteFile } from '../types';
-import { getCurrentIp, getArticleFolder } from '../services/settings';
+import { getCurrentIp, getArticleFolder, getDeviceBaseUrl } from '../services/settings';
 import { listCrossPointFiles, deleteCrossPointFile, listCrossPointSleepFiles, deleteCrossPointSleepFile } from '../services/crosspoint_upload';
 import { listStockFiles, deleteStockFile } from '../services/x4_upload';
+
+const DATE_FOLDER_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export function DeviceScreen() {
     const { settings, connectionStatus } = useConnection();
@@ -33,6 +35,44 @@ export function DeviceScreen() {
     const [screensavers, setScreensavers] = useState<RemoteFile[]>([]);
     const [loading, setLoading] = useState(false);
     const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
+
+    /**
+     * Discover date-named subfolders inside the base article folder.
+     */
+    const listDateSubfolders = useCallback(async (ip: string, baseFolder: string): Promise<string[]> => {
+        const baseUrl = getDeviceBaseUrl(ip);
+        try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 10000);
+
+            let items: any[] = [];
+            if (settings.firmwareType === 'crosspoint') {
+                const res = await fetch(`${baseUrl}/api/files?path=${encodeURIComponent('/' + baseFolder)}`, {
+                    signal: controller.signal,
+                });
+                clearTimeout(timeout);
+                if (res.ok) items = await res.json();
+            } else {
+                const res = await fetch(`${baseUrl}/list?dir=${encodeURIComponent('/' + baseFolder + '/')}`, {
+                    signal: controller.signal,
+                });
+                clearTimeout(timeout);
+                if (res.ok) items = await res.json();
+            }
+
+            if (!Array.isArray(items)) return [];
+            return items
+                .filter((item: any) => {
+                    const isDir = settings.firmwareType === 'crosspoint' ? item.isDirectory : item.type === 'dir';
+                    return isDir && DATE_FOLDER_RE.test(item.name);
+                })
+                .map((item: any) => item.name)
+                .sort()
+                .reverse(); // newest first
+        } catch {
+            return [];
+        }
+    }, [settings.firmwareType]);
 
     const loadFiles = useCallback(async () => {
         if (!connectionStatus.connected) return;
@@ -44,17 +84,32 @@ export function DeviceScreen() {
         // Load independently to avoid one blocking the other
         const loadArticlesPromise = (async () => {
             try {
-                if (settings.firmwareType === 'crosspoint') {
+                if (settings.useDateFolders) {
+                    // Discover date subfolders, list files from each, merge
+                    const subfolders = await listDateSubfolders(ip, articleFolder);
+                    const allFiles: RemoteFile[] = [];
+
+                    // Also list files directly in the base folder (legacy files)
+                    const baseFolders = [articleFolder, ...subfolders.map(sf => `${articleFolder}/${sf}`)];
+
+                    for (const folder of baseFolders) {
+                        const listFn = settings.firmwareType === 'crosspoint' ? listCrossPointFiles : listStockFiles;
+                        const items = await listFn(ip, folder);
+                        allFiles.push(...items.map(f => ({ ...f, folder })));
+                    }
+
+                    allFiles.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+                    setArticles(allFiles);
+                } else if (settings.firmwareType === 'crosspoint') {
                     const items = await listCrossPointFiles(ip, articleFolder);
-                    setArticles(items);
+                    setArticles(items.map(f => ({ ...f, folder: articleFolder })));
                 } else {
                     const items = await listStockFiles(ip, articleFolder);
-                    setArticles(items);
+                    setArticles(items.map(f => ({ ...f, folder: articleFolder })));
                     setScreensavers([]); // Clear screensavers for stock
                 }
             } catch (getError) {
                 console.warn('Failed to load articles:', getError);
-                // Keep previous articles or empty? Usually better to keep empty or show error state
             }
         })();
 
@@ -71,7 +126,7 @@ export function DeviceScreen() {
         // Wait for both to finish before hiding loader
         await Promise.allSettled([loadArticlesPromise, loadScreensaversPromise]);
         setLoading(false);
-    }, [settings, connectionStatus.connected]);
+    }, [settings, connectionStatus.connected, listDateSubfolders]);
 
     useEffect(() => {
         if (connectionStatus.connected) {
@@ -90,14 +145,14 @@ export function DeviceScreen() {
                 onPress: async () => {
                     setDeleteLoading(file.name);
                     const ip = getCurrentIp(settings);
-                    const articleFolder = getArticleFolder(settings);
+                    const folder = file.folder || getArticleFolder(settings);
                     const filename = file.rawName || file.name;
                     let success = false;
 
                     if (settings.firmwareType === 'crosspoint') {
-                        success = await deleteCrossPointFile(ip, filename, articleFolder);
+                        success = await deleteCrossPointFile(ip, filename, folder);
                     } else {
-                        success = await deleteStockFile(ip, filename, articleFolder);
+                        success = await deleteStockFile(ip, filename, folder);
                     }
 
                     if (success) {
@@ -165,7 +220,9 @@ export function DeviceScreen() {
                             📄  Articles ({articles.length})
                         </Text>
                     </View>
-                    <Text style={styles.sectionPath}>/{getArticleFolder(settings)}</Text>
+                    <Text style={styles.sectionPath}>
+                        /{getArticleFolder(settings)}{settings.useDateFolders ? '/yyyy-mm-dd' : ''}
+                    </Text>
 
                     {loading && articles.length === 0 ? (
                         <ActivityIndicator size="small" color="#fff" style={styles.loader} />

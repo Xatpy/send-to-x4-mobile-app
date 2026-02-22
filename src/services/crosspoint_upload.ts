@@ -201,64 +201,66 @@ export async function uploadLocalFileToCrossPoint(
 }
 
 /**
- * Check if folder exists on CrossPoint firmware, create if not
+ * Check if folder exists on CrossPoint firmware, create if not.
+ * Supports nested paths (e.g. "send-to-x4/2026-02-20") by ensuring each level.
  */
 async function ensureFolderExistsCrossPoint(ip: string, folder: string): Promise<boolean> {
     const baseUrl = getDeviceBaseUrl(ip);
+    const segments = folder.split('/').filter(Boolean);
 
-    // 1. Try to list to check existence
-    try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 5000); // Short timeout for check
+    for (let i = 0; i < segments.length; i++) {
+        const segment = segments[i];
+        const parentDir = i === 0 ? '/' : '/' + segments.slice(0, i).join('/');
 
-        const listRes = await fetch(`${baseUrl}/api/files?path=/`, {
-            signal: controller.signal,
-        });
-        clearTimeout(timeout);
+        // 1. Check if this level exists
+        let exists = false;
+        try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 5000);
 
-        if (listRes.ok) {
-            const items = await listRes.json();
-            const exists = Array.isArray(items) && items.some((item: any) =>
-                item.isDirectory && item.name === folder
-            );
-            if (exists) return true;
-        } else {
-            console.warn(`List files failed in ensureFolder: ${listRes.status}`);
-        }
-    } catch (e) {
-        console.warn('List files exception in ensureFolder (proceeding to mkdir):', e);
-    }
+            const listRes = await fetch(`${baseUrl}/api/files?path=${encodeURIComponent(parentDir)}`, {
+                signal: controller.signal,
+            });
+            clearTimeout(timeout);
 
-    // 2. Try to create (if not found or list failed)
-    try {
-        const formData = new FormData();
-        formData.append('name', folder);
-        formData.append('path', '/');
-
-        const createController = new AbortController();
-        const createTimeout = setTimeout(() => createController.abort(), 10000);
-
-        const createRes = await fetch(`${baseUrl}/mkdir`, {
-            method: 'POST',
-            body: formData,
-            signal: createController.signal,
-        });
-
-        clearTimeout(createTimeout);
-
-        if (!createRes.ok) {
-            console.warn(`mkdir failed: ${createRes.status}`);
-            // If 400, 409 or 500, it often means folder already exists or server is weird but folder might be there.
-            if (createRes.status === 400 || createRes.status === 409 || createRes.status === 500) {
-                return true;
+            if (listRes.ok) {
+                const items = await listRes.json();
+                exists = Array.isArray(items) && items.some((item: any) =>
+                    item.isDirectory && item.name === segment
+                );
             }
+        } catch (e) {
+            console.warn(`ensureFolderCrossPoint: list check failed for ${segment}:`, e);
+        }
+
+        if (exists) continue;
+
+        // 2. Create this level
+        try {
+            const formData = new FormData();
+            formData.append('name', segment);
+            formData.append('path', parentDir);
+
+            const createController = new AbortController();
+            const createTimeout = setTimeout(() => createController.abort(), 10000);
+
+            const createRes = await fetch(`${baseUrl}/mkdir`, {
+                method: 'POST',
+                body: formData,
+                signal: createController.signal,
+            });
+            clearTimeout(createTimeout);
+
+            if (!createRes.ok && createRes.status !== 400 && createRes.status !== 409 && createRes.status !== 500) {
+                console.warn(`mkdir failed for ${segment}: ${createRes.status}`);
+                return false;
+            }
+        } catch (e) {
+            console.warn(`mkdir exception for ${segment}:`, e);
             return false;
         }
-        return true;
-    } catch (e) {
-        console.warn('mkdir exception:', e);
-        return false;
     }
+    return true;
 }
 
 /**

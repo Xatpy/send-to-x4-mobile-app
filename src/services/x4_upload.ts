@@ -123,49 +123,61 @@ export async function uploadToStock(
 }
 
 /**
- * Check if folder exists on Stock firmware, create if not
+ * Check if folder exists on Stock firmware, create if not.
+ * Supports nested paths (e.g. "send-to-x4/2026-02-20") by ensuring each level.
  */
 async function ensureFolderExistsStock(ip: string, folder: string): Promise<boolean> {
-    try {
-        const baseUrl = getDeviceBaseUrl(ip);
-        // Check if folder exists
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 10000);
+    const baseUrl = getDeviceBaseUrl(ip);
+    const segments = folder.split('/').filter(Boolean);
 
-        const listRes = await fetch(`${baseUrl}/list?dir=/`, {
-            signal: controller.signal,
-        });
+    let currentPath = '';
+    for (const segment of segments) {
+        const parentDir = currentPath ? `/${currentPath}` : '/';
+        currentPath = currentPath ? `${currentPath}/${segment}` : segment;
 
-        clearTimeout(timeout);
+        // 1. Check if this level exists
+        try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 10000);
 
-        if (!listRes.ok) return false;
+            const listRes = await fetch(`${baseUrl}/list?dir=${encodeURIComponent(parentDir + (parentDir === '/' ? '' : '/'))}`, {
+                signal: controller.signal,
+            });
+            clearTimeout(timeout);
 
-        const items = await listRes.json();
-        const exists = Array.isArray(items) && items.some((item: any) =>
-            item.type === 'dir' && item.name === folder
-        );
+            if (!listRes.ok) return false;
 
-        if (exists) return true;
+            const items = await listRes.json();
+            const exists = Array.isArray(items) && items.some((item: any) =>
+                item.type === 'dir' && item.name === segment
+            );
 
-        // Create folder
-        const formData = new FormData();
-        formData.append('path', `/${folder}/`);
+            if (exists) continue;
+        } catch {
+            return false;
+        }
 
-        const createController = new AbortController();
-        const createTimeout = setTimeout(() => createController.abort(), 10000);
+        // 2. Create this level
+        try {
+            const formData = new FormData();
+            formData.append('path', `/${currentPath}/`);
 
-        const createRes = await fetch(`${baseUrl}/edit`, {
-            method: 'PUT',
-            body: formData,
-            signal: createController.signal,
-        });
+            const createController = new AbortController();
+            const createTimeout = setTimeout(() => createController.abort(), 10000);
 
-        clearTimeout(createTimeout);
+            const createRes = await fetch(`${baseUrl}/edit`, {
+                method: 'PUT',
+                body: formData,
+                signal: createController.signal,
+            });
+            clearTimeout(createTimeout);
 
-        return createRes.ok;
-    } catch {
-        return false;
+            if (!createRes.ok) return false;
+        } catch {
+            return false;
+        }
     }
+    return true;
 }
 
 /**

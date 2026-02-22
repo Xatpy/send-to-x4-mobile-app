@@ -35,7 +35,7 @@ import { extractArticle } from '../services/extractor';
 import { buildEpub } from '../services/epub_builder';
 import { uploadToStock } from '../services/x4_upload';
 import { uploadToCrossPoint } from '../services/crosspoint_upload';
-import { getCurrentIp, getArticleFolder } from '../services/settings';
+import { getCurrentIp, getArticleFolder, resolveTargetFolder } from '../services/settings';
 import { getQueue, addToQueue, removeFromQueue, clearQueue } from '../services/queue_storage';
 import { prefetchArticle } from '../services/queue_prefetch';
 
@@ -323,7 +323,7 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
 
             const epub = await buildEpub(extraction.article);
             const ip = getCurrentIp(settings);
-            const articleFolder = getArticleFolder(settings);
+            const articleFolder = resolveTargetFolder(getArticleFolder(settings), settings.useDateFolders);
             let uploadResult;
 
             if (settings.firmwareType === 'crosspoint') {

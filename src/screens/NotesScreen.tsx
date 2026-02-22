@@ -20,6 +20,10 @@ import {
     ScrollView,
     TouchableOpacity,
     Keyboard,
+    Animated,
+    type NativeSyntheticEvent,
+    type NativeScrollEvent,
+    type LayoutChangeEvent,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -31,6 +35,9 @@ import { sendNoteAsTxt } from '../services/note_sender';
 const DRAFT_KEY = '@send-to-x4/note-draft';
 const DRAFT_TITLE_KEY = '@send-to-x4/note-draft-title';
 const DEBOUNCE_MS = 500;
+const SCROLLBAR_WIDTH = 6;
+const SCROLLBAR_MIN_HEIGHT = 40;
+const SCROLLBAR_FADE_DELAY = 1500;
 
 export function NotesScreen() {
     const { settings, connectionStatus } = useConnection();
@@ -42,6 +49,52 @@ export function NotesScreen() {
     const inputRef = useRef<TextInput>(null);
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const saveTitleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // ── Custom scrollbar state ──────────────────────────────────────
+    const scrollOpacity = useRef(new Animated.Value(0)).current;
+    const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const [scrollbarHeight, setScrollbarHeight] = useState(0);
+    const [scrollbarTop, setScrollbarTop] = useState(0);
+    const [showScrollbar, setShowScrollbar] = useState(false);
+    const viewportHeight = useRef(0);
+    const contentHeight = useRef(0);
+
+    const updateScrollbar = useCallback((scrollY: number) => {
+        const vp = viewportHeight.current;
+        const ch = contentHeight.current;
+        if (ch <= vp) {
+            setShowScrollbar(false);
+            return;
+        }
+        setShowScrollbar(true);
+        const ratio = vp / ch;
+        const thumbH = Math.max(SCROLLBAR_MIN_HEIGHT, ratio * vp);
+        const maxScroll = ch - vp;
+        const scrollRatio = Math.min(scrollY / maxScroll, 1);
+        const maxTop = vp - thumbH;
+        setScrollbarHeight(thumbH);
+        setScrollbarTop(scrollRatio * maxTop);
+    }, []);
+
+    const flashScrollbar = useCallback(() => {
+        if (fadeTimer.current) clearTimeout(fadeTimer.current);
+        Animated.timing(scrollOpacity, { toValue: 1, duration: 100, useNativeDriver: true }).start();
+        fadeTimer.current = setTimeout(() => {
+            Animated.timing(scrollOpacity, { toValue: 0, duration: 400, useNativeDriver: true }).start();
+        }, SCROLLBAR_FADE_DELAY);
+    }, [scrollOpacity]);
+
+    const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+        const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+        viewportHeight.current = layoutMeasurement.height;
+        contentHeight.current = contentSize.height;
+        updateScrollbar(contentOffset.y);
+        flashScrollbar();
+    }, [updateScrollbar, flashScrollbar]);
+
+    const handleLayout = useCallback((e: LayoutChangeEvent) => {
+        viewportHeight.current = e.nativeEvent.layout.height;
+    }, []);
 
     // ── Restore draft on mount ──────────────────────────────────────
     useEffect(() => {
@@ -58,10 +111,11 @@ export function NotesScreen() {
             }
         })();
 
-        // Cleanup debounce timers on unmount
+        // Cleanup timers on unmount
         return () => {
             if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
             if (saveTitleTimerRef.current) clearTimeout(saveTitleTimerRef.current);
+            if (fadeTimer.current) clearTimeout(fadeTimer.current);
         };
     }, []);
 
@@ -148,96 +202,117 @@ export function NotesScreen() {
 
     return (
         <View style={styles.container}>
-            <ScrollView
-                style={styles.content}
-                contentContainerStyle={styles.contentContainer}
-                keyboardShouldPersistTaps="handled"
-            >
-                {/* Header */}
-                <Text style={styles.title}>Send Notes</Text>
-                <Text style={styles.subtitle}>
-                    Write or paste text to send as a .txt file
-                </Text>
+            <View style={{ flex: 1 }}>
+                <ScrollView
+                    style={styles.content}
+                    contentContainerStyle={styles.contentContainer}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
+                    onScroll={handleScroll}
+                    onLayout={handleLayout}
+                    scrollEventThrottle={16}
+                >
+                    {/* Header */}
+                    <Text style={styles.title}>Send Notes</Text>
+                    <Text style={styles.subtitle}>
+                        Write or paste text to send as a .txt file
+                    </Text>
 
-                {/* Title Input */}
-                <TextInput
-                    style={styles.titleInput}
-                    value={title}
-                    onChangeText={handleTitleChange}
-                    placeholder="Note title (optional)"
-                    placeholderTextColor="rgba(255,255,255,0.25)"
-                    maxLength={60}
-                    returnKeyType="next"
-                    onSubmitEditing={() => inputRef.current?.focus()}
-                    blurOnSubmit={false}
-                    autoFocus
-                />
-
-                {/* Text Input Card */}
-                <View style={styles.inputCard}>
+                    {/* Title Input */}
                     <TextInput
-                        ref={inputRef}
-                        style={styles.textInput}
-                        value={text}
-                        onChangeText={handleTextChange}
-                        placeholder="Type or paste your note…"
+                        style={styles.titleInput}
+                        value={title}
+                        onChangeText={handleTitleChange}
+                        placeholder="Note title (optional)"
                         placeholderTextColor="rgba(255,255,255,0.25)"
-                        multiline
-                        textAlignVertical="top"
-                        scrollEnabled
+                        maxLength={60}
+                        returnKeyType="next"
+                        onSubmitEditing={() => inputRef.current?.focus()}
+                        blurOnSubmit={false}
+                        autoFocus
                     />
 
-                    {/* Footer row: char count + utility buttons */}
-                    <View style={styles.inputFooter}>
-                        <Text style={styles.charCount}>{charCount} chars</Text>
+                    {/* Text Input Card */}
+                    <View style={styles.inputCard}>
+                        <TextInput
+                            ref={inputRef}
+                            style={styles.textInput}
+                            value={text}
+                            onChangeText={handleTextChange}
+                            placeholder="Type or paste your note…"
+                            placeholderTextColor="rgba(255,255,255,0.25)"
+                            multiline
+                            textAlignVertical="top"
+                            scrollEnabled
+                        />
 
-                        <View style={styles.utilButtons}>
-                            <TouchableOpacity
-                                style={styles.utilButton}
-                                onPress={handlePaste}
-                                disabled={sending}
-                            >
-                                <Text style={[
-                                    styles.utilButtonText,
-                                    sending && styles.utilButtonDisabled,
-                                ]}>📋 Paste</Text>
-                            </TouchableOpacity>
+                        {/* Footer row: char count + utility buttons */}
+                        <View style={styles.inputFooter}>
+                            <Text style={styles.charCount}>{charCount} chars</Text>
 
-                            <TouchableOpacity
-                                style={styles.utilButton}
-                                onPress={handleClear}
-                                disabled={sending || (text.length === 0 && title.length === 0)}
-                            >
-                                <Text style={[
-                                    styles.utilButtonText,
-                                    (sending || (text.length === 0 && title.length === 0)) && styles.utilButtonDisabled,
-                                ]}>
-                                    ✕ Clear
-                                </Text>
-                            </TouchableOpacity>
+                            <View style={styles.utilButtons}>
+                                <TouchableOpacity
+                                    style={styles.utilButton}
+                                    onPress={handlePaste}
+                                    disabled={sending}
+                                >
+                                    <Text style={[
+                                        styles.utilButtonText,
+                                        sending && styles.utilButtonDisabled,
+                                    ]}>📋 Paste</Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                    style={styles.utilButton}
+                                    onPress={handleClear}
+                                    disabled={sending || (text.length === 0 && title.length === 0)}
+                                >
+                                    <Text style={[
+                                        styles.utilButtonText,
+                                        (sending || (text.length === 0 && title.length === 0)) && styles.utilButtonDisabled,
+                                    ]}>
+                                        ✕ Clear
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
                         </View>
                     </View>
-                </View>
 
-                {/* Success banner */}
-                {successMessage && (
-                    <View style={styles.successBanner}>
-                        <Text style={styles.successText}>{successMessage}</Text>
+                    {/* Success banner */}
+                    {successMessage && (
+                        <View style={styles.successBanner}>
+                            <Text style={styles.successText}>{successMessage}</Text>
+                        </View>
+                    )}
+
+                    {/* Send button */}
+                    <View style={styles.sendContainer}>
+                        <ActionButton
+                            title="SEND TO DEVICE"
+                            icon="◉"
+                            onPress={handleSend}
+                            loading={sending}
+                            disabled={!text.trim() || sending}
+                            variant="primary"
+                        />
                     </View>
-                )}
+                </ScrollView>
 
-                {/* Send button */}
-                <View style={styles.sendContainer}>
-                    <ActionButton
-                        title="SEND TO DEVICE"
-                        icon="◉"
-                        onPress={handleSend}
-                        loading={sending}
-                        disabled={!text.trim() || sending}
-                        variant="primary"
+                {/* Custom wide scrollbar */}
+                {showScrollbar && (
+                    <Animated.View
+                        pointerEvents="none"
+                        style={[
+                            styles.scrollThumb,
+                            {
+                                opacity: scrollOpacity,
+                                height: scrollbarHeight,
+                                top: scrollbarTop,
+                            },
+                        ]}
                     />
-                </View>
-            </ScrollView>
+                )}
+            </View>
         </View>
     );
 }
@@ -338,5 +413,12 @@ const styles = StyleSheet.create({
     },
     sendContainer: {
         marginTop: 20,
+    },
+    scrollThumb: {
+        position: 'absolute',
+        right: 2,
+        width: SCROLLBAR_WIDTH,
+        borderRadius: SCROLLBAR_WIDTH / 2,
+        backgroundColor: 'rgba(255,255,255,0.35)',
     },
 });

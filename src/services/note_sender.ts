@@ -8,32 +8,22 @@
 import type { UploadResult, Settings } from '../types';
 import { uploadToCrossPoint } from './crosspoint_upload';
 import { uploadToStock } from './x4_upload';
-import { getCurrentIp, getNoteFolder } from './settings';
+import { getCurrentIp, getNoteFolder, resolveTargetFolder } from './settings';
 
-let lastTs = 0;
-let sameTsCounter = 0;
-
-function nextUniqueSuffix(): string {
-    const now = Date.now();
-    if (now === lastTs) {
-        sameTsCounter += 1;
-    } else {
-        lastTs = now;
-        sameTsCounter = 0;
-    }
-    return `${now.toString(36)}-${sameTsCounter.toString(36)}`;
-}
+let lastTitle = '';
+let sameTitleCounter = 0;
 
 /**
  * Generate a filename for the note.
  *
- * If a title is provided it is sanitized and used as the base name.
- * Otherwise falls back to a timestamped default: note-YYYY-MM-DD-HHmm.txt
+ * If a title is provided it is sanitized and used as the base name
+ * (e.g. "My Note" → "My-Note.txt"). A short numeric suffix (-2, -3, …)
+ * is appended only when the same title is sent consecutively.
+ *
+ * Without a title, falls back to: note-YYYY-MM-DD-HHmm.txt
  */
 function generateNoteFilename(title?: string): string {
-    const unique = nextUniqueSuffix();
     if (title && title.trim()) {
-        // Sanitize: keep letters, digits, spaces → dashes; collapse; trim; cap length
         const safe = title
             .trim()
             .replace(/[^a-zA-Z0-9\s-]/g, '')
@@ -41,15 +31,27 @@ function generateNoteFilename(title?: string): string {
             .replace(/-+/g, '-')
             .replace(/^-|-$/g, '')
             .substring(0, 60);
-        if (safe) return `${safe}-${unique}.txt`;
+        if (safe) {
+            if (safe === lastTitle) {
+                sameTitleCounter++;
+                return `${safe}-${sameTitleCounter}.txt`;
+            }
+            lastTitle = safe;
+            sameTitleCounter = 1;
+            return `${safe}.txt`;
+        }
     }
+    // Untitled — use timestamp
+    lastTitle = '';
+    sameTitleCounter = 0;
     const now = new Date();
     const yyyy = now.getFullYear();
     const mm = String(now.getMonth() + 1).padStart(2, '0');
     const dd = String(now.getDate()).padStart(2, '0');
     const hh = String(now.getHours()).padStart(2, '0');
     const min = String(now.getMinutes()).padStart(2, '0');
-    return `note-${yyyy}-${mm}-${dd}-${hh}${min}-${unique}.txt`;
+    const ss = String(now.getSeconds()).padStart(2, '0');
+    return `note-${yyyy}-${mm}-${dd}-${hh}${min}${ss}.txt`;
 }
 
 /**
@@ -68,7 +70,7 @@ export async function sendNoteAsTxt(
     const filename = generateNoteFilename(title);
     const data = new TextEncoder().encode(noteText);
     const ip = getCurrentIp(settings);
-    const noteFolder = getNoteFolder(settings);
+    const noteFolder = resolveTargetFolder(getNoteFolder(settings), settings.useDateFolders);
 
     console.log(`[NoteSender] Sending note: filename=${filename}, size=${data.length} bytes, ip=${ip}, folder=${noteFolder}`);
 
