@@ -26,6 +26,7 @@ import {
     type LayoutChangeEvent,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
+import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useConnection } from '../contexts/ConnectionProvider';
@@ -41,6 +42,7 @@ const SCROLLBAR_FADE_DELAY = 1500;
 
 export function NotesScreen() {
     const { settings, connectionStatus } = useConnection();
+    const navigation = useNavigation<any>();
 
     const [title, setTitle] = useState('');
     const [text, setText] = useState('');

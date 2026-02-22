@@ -21,6 +21,7 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 
 import { useConnection } from '../contexts/ConnectionProvider';
 import { UrlInput } from '../components/UrlInput';
@@ -57,6 +58,7 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
     const [errorMessage, setErrorMessage] = useState<string | undefined>();
     const [sendLoading, setSendLoading] = useState(false);
     const [extractionUrl, setExtractionUrl] = useState<string | null>(null);
+    const navigation = useNavigation<any>();
 
     // Queue state
     const [queue, setQueue] = useState<QueuedArticle[]>([]);

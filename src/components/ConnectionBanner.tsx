@@ -6,15 +6,20 @@
 
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { useConnection } from '../contexts/ConnectionProvider';
 
 export function ConnectionBanner() {
     const { connectionStatus, checkConnection } = useConnection();
+    const navigation = useNavigation<any>();
 
     if (connectionStatus.checking) {
         return (
             <View style={[styles.banner, styles.checkingBanner]}>
-                <ActivityIndicator size="small" color="#a0a0b0" />
+                <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={styles.settingsIcon}>
+                    <Text style={{ fontSize: 20 }}>⚙️</Text>
+                </TouchableOpacity>
+                <ActivityIndicator size="small" color="#a0a0b0" style={{ marginLeft: 8 }} />
                 <Text style={styles.checkingText}>Checking connection…</Text>
             </View>
         );
@@ -23,26 +28,36 @@ export function ConnectionBanner() {
     if (connectionStatus.connected) {
         return (
             <View style={[styles.banner, styles.connectedBanner]}>
-                <View style={styles.dotConnected} />
-                <Text style={styles.connectedText}>
-                    Connected to X4 ({connectionStatus.ip})
-                </Text>
+                <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={styles.settingsIcon}>
+                    <Text style={{ fontSize: 20 }}>⚙️</Text>
+                </TouchableOpacity>
+                <View style={styles.contentWrap}>
+                    <View style={styles.dotConnected} />
+                    <Text style={styles.connectedText}>
+                        Connected to X4 ({connectionStatus.ip})
+                    </Text>
+                </View>
             </View>
         );
     }
 
     return (
-        <TouchableOpacity
-            style={[styles.banner, styles.disconnectedBanner]}
-            onPress={checkConnection}
-            activeOpacity={0.7}
-        >
-            <View style={styles.dotDisconnected} />
-            <Text style={styles.disconnectedText} numberOfLines={1} ellipsizeMode="tail">
-                {connectionStatus.lastError || 'Not connected'}
-            </Text>
-            <Text style={styles.retryHint}>Tap to retry</Text>
-        </TouchableOpacity>
+        <View style={[styles.banner, styles.disconnectedBanner]}>
+            <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={styles.settingsIcon}>
+                <Text style={{ fontSize: 20 }}>⚙️</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+                style={styles.contentWrap}
+                onPress={checkConnection}
+                activeOpacity={0.7}
+            >
+                <View style={styles.dotDisconnected} />
+                <Text style={styles.disconnectedText} numberOfLines={1} ellipsizeMode="tail">
+                    {connectionStatus.lastError || 'Not connected'}
+                </Text>
+                <Text style={styles.retryHint}>Tap to retry</Text>
+            </TouchableOpacity>
+        </View>
     );
 }
 
@@ -52,6 +67,15 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingVertical: 8,
         paddingHorizontal: 16,
+    },
+    settingsIcon: {
+        marginRight: 12,
+        justifyContent: 'center',
+    },
+    contentWrap: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
     },
     checkingBanner: {
         backgroundColor: 'rgba(45, 45, 68, 0.8)',

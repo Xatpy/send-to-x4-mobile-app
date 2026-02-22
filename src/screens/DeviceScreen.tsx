@@ -19,6 +19,7 @@ import {
     ActivityIndicator,
     RefreshControl,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 
 import { useConnection } from '../contexts/ConnectionProvider';
 import type { RemoteFile } from '../types';
@@ -30,6 +31,7 @@ const DATE_FOLDER_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export function DeviceScreen() {
     const { settings, connectionStatus } = useConnection();
+    const navigation = useNavigation<any>();
 
     const [articles, setArticles] = useState<RemoteFile[]>([]);
     const [screensavers, setScreensavers] = useState<RemoteFile[]>([]);

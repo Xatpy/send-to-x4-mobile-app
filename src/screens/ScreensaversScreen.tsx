@@ -17,6 +17,7 @@ import {
     TouchableOpacity,
     ActivityIndicator,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 
 import { useConnection } from '../contexts/ConnectionProvider';
 import { ScreensaverButton } from '../components/ScreensaverButton';
@@ -49,6 +50,7 @@ interface ScreensaversScreenProps {
 
 export function ScreensaversScreen({ sharedImage, onSharedImageConsumed }: ScreensaversScreenProps) {
     const { settings, connectionStatus } = useConnection();
+    const navigation = useNavigation<any>();
 
     const [loading, setLoading] = useState(false);
     const [queue, setQueue] = useState<QueuedScreensaver[]>([]);

@@ -15,6 +15,7 @@ import {
     Platform,
     SafeAreaView
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import ViewShot from 'react-native-view-shot';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -39,7 +40,7 @@ export interface CanvasElement {
 
 export function SleepScreenTab() {
     const { settings, connectionStatus } = useConnection();
-
+    const navigation = useNavigation<any>();
     const [elements, setElements] = useState<CanvasElement[]>([]);
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [editingTextId, setEditingTextId] = useState<string | null>(null);

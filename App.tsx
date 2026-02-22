@@ -5,6 +5,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useShareIntent } from 'expo-share-intent';
 
 import { ConnectionProvider, useConnection } from './src/contexts/ConnectionProvider';
@@ -21,6 +22,7 @@ import { isValidUrl } from './src/utils/sanitizer';
 SplashScreen.preventAutoHideAsync();
 
 const Tab = createBottomTabNavigator();
+const Stack = createNativeStackNavigator();
 
 function TabIcon({ label, focused }: { label: string; focused: boolean }) {
   return (
@@ -33,8 +35,99 @@ function TabIcon({ label, focused }: { label: string; focused: boolean }) {
   );
 }
 
-function AppContent() {
+function MainTabs({ sharedUrl, setSharedUrl, sharedImage, setSharedImage }: any) {
   const { connectionStatus } = useConnection();
+
+  return (
+    <>
+      <ConnectionBanner />
+      <Tab.Navigator
+        screenOptions={{
+          headerShown: false,
+          tabBarStyle: {
+            backgroundColor: '#12122a',
+            borderTopColor: '#2d2d44',
+            borderTopWidth: 1,
+          },
+          tabBarActiveTintColor: '#6c63ff',
+          tabBarInactiveTintColor: '#666',
+          tabBarLabelStyle: {
+            fontSize: 11,
+            fontWeight: '600',
+          },
+        }}
+      >
+        <Tab.Screen
+          name="Articles"
+          options={{
+            tabBarIcon: ({ focused }) => <TabIcon label="📄" focused={focused} />,
+            title: 'Articles',
+          }}
+        >
+          {() => (
+            <ArticlesScreen
+              sharedUrl={sharedUrl}
+              onSharedUrlConsumed={() => setSharedUrl(null)}
+            />
+          )}
+        </Tab.Screen>
+
+        <Tab.Screen
+          name="Notes"
+          component={NotesScreen}
+          options={{
+            tabBarIcon: ({ focused }) => <TabIcon label="📝" focused={focused} />,
+          }}
+        />
+
+        <Tab.Screen
+          name="Images"
+          options={{
+            tabBarIcon: ({ focused }) => <TabIcon label="🖼️" focused={focused} />,
+          }}
+        >
+          {() => (
+            <ScreensaversScreen
+              sharedImage={sharedImage}
+              onSharedImageConsumed={() => setSharedImage(null)}
+            />
+          )}
+        </Tab.Screen>
+
+        <Tab.Screen
+          name="Design Your Sleep Screen"
+          component={SleepScreenTab}
+          options={{
+            tabBarIcon: ({ focused }) => <TabIcon label="🌙" focused={focused} />,
+            tabBarLabelStyle: { fontSize: 9, fontWeight: '600' }
+          }}
+        />
+
+        <Tab.Screen
+          name="Device"
+          component={DeviceScreen}
+          listeners={{
+            tabPress: (e) => {
+              if (!connectionStatus.connected) {
+                e.preventDefault();
+                Alert.alert('Not Connected', 'Connect to X4 WiFi to access device files.');
+              }
+            },
+          }}
+          options={{
+            tabBarIcon: ({ focused }) => (
+              <View style={{ opacity: connectionStatus.connected ? 1 : 0.4 }}>
+                <TabIcon label="📱" focused={focused} />
+              </View>
+            ),
+          }}
+        />
+      </Tab.Navigator>
+    </>
+  );
+}
+
+function AppContent() {
   const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntent();
   const navigationRef = useRef<any>(null);
 
@@ -64,9 +157,9 @@ function AppContent() {
         height: file.height ?? undefined,
       });
 
-      // Navigate to Screensavers tab
+      // Navigate to Images tab
       setTimeout(() => {
-        navigationRef.current?.navigate('Screensavers');
+        navigationRef.current?.navigate('MainTabs', { screen: 'Images' });
       }, 100);
 
       resetShareIntent();
@@ -84,7 +177,7 @@ function AppContent() {
 
         // Navigate to Articles tab
         setTimeout(() => {
-          navigationRef.current?.navigate('Articles');
+          navigationRef.current?.navigate('MainTabs', { screen: 'Articles' });
         }, 100);
       }
 
@@ -95,96 +188,20 @@ function AppContent() {
   return (
     <NavigationContainer ref={navigationRef}>
       <SafeAreaView style={styles.root} edges={['top']}>
-        <ConnectionBanner />
-        <Tab.Navigator
-          screenOptions={{
-            headerShown: false,
-            tabBarStyle: {
-              backgroundColor: '#12122a',
-              borderTopColor: '#2d2d44',
-              borderTopWidth: 1,
-            },
-            tabBarActiveTintColor: '#6c63ff',
-            tabBarInactiveTintColor: '#666',
-            tabBarLabelStyle: {
-              fontSize: 11,
-              fontWeight: '600',
-            },
-          }}
-        >
-          <Tab.Screen
-            name="Articles"
-            options={{
-              tabBarIcon: ({ focused }) => <TabIcon label="📄" focused={focused} />,
-              title: 'Articles',
-            }}
-          >
-            {() => (
-              <ArticlesScreen
+        <Stack.Navigator screenOptions={{ headerShown: false, presentation: 'modal' }}>
+          <Stack.Screen name="MainTabs">
+            {(props) => (
+              <MainTabs
+                {...props}
                 sharedUrl={sharedUrl}
-                onSharedUrlConsumed={() => setSharedUrl(null)}
-              />
-            )}
-          </Tab.Screen>
-
-          <Tab.Screen
-            name="Screensavers"
-            options={{
-              tabBarIcon: ({ focused }) => <TabIcon label="🖼️" focused={focused} />,
-            }}
-          >
-            {() => (
-              <ScreensaversScreen
+                setSharedUrl={setSharedUrl}
                 sharedImage={sharedImage}
-                onSharedImageConsumed={() => setSharedImage(null)}
+                setSharedImage={setSharedImage}
               />
             )}
-          </Tab.Screen>
-
-          <Tab.Screen
-            name="Notes"
-            component={NotesScreen}
-            options={{
-              tabBarIcon: ({ focused }) => <TabIcon label="📝" focused={focused} />,
-            }}
-          />
-
-          <Tab.Screen
-            name="Sleep Screen"
-            component={SleepScreenTab}
-            options={{
-              tabBarIcon: ({ focused }) => <TabIcon label="🌙" focused={focused} />,
-            }}
-          />
-
-          <Tab.Screen
-            name="Device"
-            component={DeviceScreen}
-            listeners={{
-              tabPress: (e) => {
-                if (!connectionStatus.connected) {
-                  e.preventDefault();
-                  Alert.alert('Not Connected', 'Connect to X4 WiFi to access device files.');
-                }
-              },
-            }}
-            options={{
-              tabBarIcon: ({ focused }) => (
-                <View style={{ opacity: connectionStatus.connected ? 1 : 0.4 }}>
-                  <TabIcon label="📱" focused={focused} />
-                </View>
-              ),
-            }}
-          />
-
-          <Tab.Screen
-            name="Settings"
-            component={SettingsScreen}
-            options={{
-              tabBarIcon: ({ focused }) => <TabIcon label="⚙️" focused={focused} />,
-            }}
-          />
-        </Tab.Navigator>
+          </Stack.Screen>
+          <Stack.Screen name="Settings" component={SettingsScreen} />
+        </Stack.Navigator>
       </SafeAreaView>
     </NavigationContainer>
   );
