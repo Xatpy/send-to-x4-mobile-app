@@ -25,7 +25,7 @@ import { processAndSendSleepScreen, processAndSaveSleepScreenLocally } from '../
 import * as Sharing from 'expo-sharing';
 import { X4_WIDTH_PX, X4_HEIGHT_PX } from '../x4/deviceConfig';
 
-export type CanvasElementType = 'text' | 'image';
+export type CanvasElementType = 'text' | 'image' | 'sign';
 
 export interface CanvasElement {
     id: string;
@@ -44,6 +44,7 @@ export function SleepScreenTab() {
     const [elements, setElements] = useState<CanvasElement[]>([]);
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [editingTextId, setEditingTextId] = useState<string | null>(null);
+    const [isInverted, setIsInverted] = useState(false);
 
     const [isSending, setIsSending] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -70,6 +71,22 @@ export function SleepScreenTab() {
         setElements([...elements, newEl]);
         setSelectedId(newEl.id);
         setEditingTextId(newEl.id); // Immediately open edit modal
+    };
+
+    const handleAddSign = () => {
+        const newEl: CanvasElement = {
+            id: Date.now().toString(),
+            type: 'sign',
+            content: '', // Start empty
+            x: 0,
+            y: 0,
+            scale: 1,
+            rotation: 0,
+            zIndex: elements.length,
+        };
+        setElements([...elements, newEl]);
+        setSelectedId(newEl.id);
+        setEditingTextId(newEl.id);
     };
 
     const handleAddImage = async () => {
@@ -114,6 +131,25 @@ export function SleepScreenTab() {
         setElements(prev => prev.filter(el => el.id !== id));
         if (selectedId === id) setSelectedId(null);
         if (editingTextId === id) setEditingTextId(null);
+    };
+
+    const handleClear = () => {
+        Alert.alert(
+            'Clear Design',
+            'Are you sure you want to remove all elements?',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Clear',
+                    style: 'destructive',
+                    onPress: () => {
+                        setElements([]);
+                        setSelectedId(null);
+                        setEditingTextId(null);
+                    }
+                }
+            ]
+        );
     };
 
     // ── Generate & Send ────────────────────────────────────
@@ -199,7 +235,7 @@ export function SleepScreenTab() {
     const closeTextModal = () => {
         if (editingTextId) {
             const el = elements.find(e => e.id === editingTextId);
-            if (el && el.type === 'text' && el.content.trim() === '') {
+            if (el && (el.type === 'text' || el.type === 'sign') && el.content.trim() === '') {
                 removeElement(editingTextId);
             }
         }
@@ -211,13 +247,28 @@ export function SleepScreenTab() {
             {/* Minimal Header */}
             <View style={styles.header}>
                 <Text style={styles.title}>Sleep Screen Editor</Text>
-                <View style={styles.headerTools}>
-                    <TouchableOpacity style={styles.toolBtn} onPress={handleAddText}>
-                        <Text style={styles.toolBtnText}>+ Text</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.toolBtn} onPress={handleAddImage}>
-                        <Text style={styles.toolBtnText}>+ Image</Text>
-                    </TouchableOpacity>
+
+                <View style={styles.toolsRow}>
+                    <View style={styles.toolsGroup}>
+                        <TouchableOpacity style={styles.toolBtn} onPress={handleAddSign}>
+                            <Text style={styles.toolBtnText}>+ Sign</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.toolBtn} onPress={handleAddText}>
+                            <Text style={styles.toolBtnText}>+ Text</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.toolBtn} onPress={handleAddImage}>
+                            <Text style={styles.toolBtnText}>+ Image</Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    <View style={styles.toolsGroup}>
+                        <TouchableOpacity style={styles.toolBtn} onPress={() => setIsInverted(!isInverted)}>
+                            <Text style={styles.toolBtnText}>{isInverted ? 'B/W' : 'Invert'}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.toolBtn} onPress={handleClear}>
+                            <Text style={styles.toolBtnText}>Reset</Text>
+                        </TouchableOpacity>
+                    </View>
                 </View>
             </View>
 
@@ -239,16 +290,17 @@ export function SleepScreenTab() {
                 )}
 
                 <View style={[styles.canvasBoundary, { aspectRatio: X4_WIDTH_PX / X4_HEIGHT_PX }]}>
-                    <ViewShot ref={viewShotRef} style={{ flex: 1, backgroundColor: '#fff', overflow: 'hidden' }} options={{ format: 'png', quality: 1 }}>
+                    <ViewShot ref={viewShotRef} style={{ flex: 1, backgroundColor: isInverted ? '#000' : '#fff', overflow: 'hidden' }} options={{ format: 'png', quality: 1 }}>
                         {elements.map(el => (
                             <DraggableElement
                                 key={el.id}
                                 element={el}
                                 isSelected={selectedId === el.id}
+                                isInverted={isInverted}
                                 onSelect={() => setSelectedId(el.id)}
-                                onDoubleTap={() => { if (el.type === 'text') setEditingTextId(el.id); }}
+                                onDoubleTap={() => { if (el.type === 'text' || el.type === 'sign') setEditingTextId(el.id); }}
                                 onDelete={() => removeElement(el.id)}
-                                onEdit={() => { if (el.type === 'text') setEditingTextId(el.id); }}
+                                onEdit={() => { if (el.type === 'text' || el.type === 'sign') setEditingTextId(el.id); }}
                                 onChange={(updates) => updateElement(el.id, updates)}
                             />
                         ))}
@@ -313,6 +365,7 @@ export function SleepScreenTab() {
 interface DraggableElementProps {
     element: CanvasElement;
     isSelected: boolean;
+    isInverted: boolean;
     onSelect: () => void;
     onDoubleTap: () => void;
     onDelete: () => void;
@@ -334,7 +387,7 @@ function getAngle(touches: any[]) {
     return (Math.atan2(dy, dx) * 180) / Math.PI;
 }
 
-function DraggableElement({ element, isSelected, onSelect, onDoubleTap, onDelete, onEdit, onChange }: DraggableElementProps) {
+function DraggableElement({ element, isSelected, isInverted, onSelect, onDoubleTap, onDelete, onEdit, onChange }: DraggableElementProps) {
     const pan = useRef(new Animated.ValueXY({ x: element.x, y: element.y })).current;
     const lastTap = useRef(0);
 
@@ -373,6 +426,7 @@ function DraggableElement({ element, isSelected, onSelect, onDoubleTap, onDelete
                 }
             },
             onPanResponderMove: (evt, gestureState) => {
+                if (latest.current.element.type === 'sign') return;
                 const touches = evt.nativeEvent.touches;
 
                 if (touches.length === 2) {
@@ -395,7 +449,7 @@ function DraggableElement({ element, isSelected, onSelect, onDoubleTap, onDelete
                         const angleDelta = currentAngle - initialAngle.current;
 
                         onChange({
-                            scale: Math.max(0.2, Math.min(10, initialScale.current * scaleFactor)),
+                            scale: Math.max(0.2, Math.min(40, initialScale.current * scaleFactor)),
                             rotation: initialRotation.current + angleDelta
                         });
                     }
@@ -460,7 +514,7 @@ function DraggableElement({ element, isSelected, onSelect, onDoubleTap, onDelete
             const scaleFactor = newDist / scaleState.current.initialDist;
             const newScale = scaleState.current.initialScale * scaleFactor;
 
-            latest.current.onChange({ scale: Math.max(0.2, Math.min(10, newScale)) });
+            latest.current.onChange({ scale: Math.max(0.2, Math.min(40, newScale)) });
         },
         onPanResponderRelease: () => { }
     })).current;
@@ -515,15 +569,16 @@ function DraggableElement({ element, isSelected, onSelect, onDoubleTap, onDelete
     }, [element.x, element.y, pan]);
 
     // ONLY transform rotation and translation natively.
+    const isText = element.type === 'text' || element.type === 'sign';
+    const isSign = element.type === 'sign';
     const transformStyle = {
-        transform: [
+        transform: isSign ? [] : [
             { translateX: pan.x },
             { translateY: pan.y },
             { rotate: `${element.rotation}deg` }
         ]
     };
 
-    const isText = element.type === 'text';
     const contentScale = element.scale;
 
     const handleStyle: any = {
@@ -544,15 +599,56 @@ function DraggableElement({ element, isSelected, onSelect, onDoubleTap, onDelete
         shadowRadius: 2,
     };
 
+    let calculatedFontSize = 300;
+    if (isSign) {
+        const lines = (element.content || ' ').split('\n');
+        const longestLineLength = Math.max(...lines.map(l => l.length), 1);
+        const totalLines = Math.max(lines.length, 1);
+
+        // Approximate widths: a character is roughly 0.55x its font size in width.
+        const maxFontSizeWidth = (X4_WIDTH_PX - 40) / (longestLineLength * 0.55);
+
+        // Line height is roughly 1.2x font size.
+        const maxFontSizeHeight = (X4_HEIGHT_PX - 40) / (totalLines * 1.2);
+
+        calculatedFontSize = Math.max(12, Math.min(300, maxFontSizeWidth, maxFontSizeHeight));
+    }
+
     return (
         <Animated.View
             {...panResponder.panHandlers}
-            style={[styles.elementWrapper, transformStyle, { zIndex: element.zIndex, padding: 15 }]}
+            style={[
+                styles.elementWrapper,
+                transformStyle,
+                { zIndex: element.zIndex, padding: isSign ? 20 : 15 },
+                isSign && { width: '100%', height: '100%', top: 0, left: 0 }
+            ]}
             onLayout={(e) => setSize({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
         >
-            <View style={[isSelected && styles.elementSelected]}>
+            <View style={[isSelected && styles.elementSelected, isSign && { flex: 1, width: '100%', height: '100%' }]}>
                 {isText ? (
-                    <Text style={[styles.elementText, { fontSize: Math.max(12, 20 * contentScale) }]}>{element.content || ' '}</Text>
+                    isSign ? (
+                        <View style={{ flex: 1, width: '100%', justifyContent: 'center', alignItems: 'center' }}>
+                            <Text
+                                style={[
+                                    styles.elementText,
+                                    {
+                                        color: isInverted ? '#fff' : '#000',
+                                        textAlign: 'center',
+                                        textAlignVertical: 'center', // Android
+                                        fontSize: calculatedFontSize,
+                                        lineHeight: calculatedFontSize * 1.2
+                                    }
+                                ]}
+                            >
+                                {element.content || ' '}
+                            </Text>
+                        </View>
+                    ) : (
+                        <Text style={[styles.elementText, { color: isInverted ? '#fff' : '#000', fontSize: Math.max(12, 20 * contentScale) }]}>
+                            {element.content || ' '}
+                        </Text>
+                    )
                 ) : (
                     <Image source={{ uri: element.content }} style={[styles.elementImage, { width: 150 * contentScale, height: 150 * contentScale }]} resizeMode="contain" />
                 )}
@@ -570,21 +666,25 @@ function DraggableElement({ element, isSelected, onSelect, onDoubleTap, onDelete
                         <Text style={{ color: 'red', fontWeight: 'bold', fontSize: 16, lineHeight: 18 }}>✕</Text>
                     </TouchableOpacity>
 
-                    {/* Bottom-Right: Scale (↔) */}
-                    <View
-                        style={[handleStyle, { bottom: 0, right: 0 }]}
-                        {...scaleResponder.panHandlers}
-                    >
-                        <Text style={{ color: '#007AFF', fontSize: 18, transform: [{ rotate: '45deg' }], lineHeight: 20 }}>↔</Text>
-                    </View>
+                    {/* Bottom-Right: Scale (↔) - Disabled for sign */}
+                    {!isSign && (
+                        <View
+                            style={[handleStyle, { bottom: 0, right: 0 }]}
+                            {...scaleResponder.panHandlers}
+                        >
+                            <Text style={{ color: '#007AFF', fontSize: 18, transform: [{ rotate: '45deg' }], lineHeight: 20 }}>↔</Text>
+                        </View>
+                    )}
 
-                    {/* Top-Left: Rotate (↻) */}
-                    <View
-                        style={[handleStyle, { top: 0, left: 0 }]}
-                        {...rotateResponder.panHandlers}
-                    >
-                        <Text style={{ color: '#007AFF', fontSize: 18, lineHeight: 20 }}>↻</Text>
-                    </View>
+                    {/* Top-Left: Rotate (↻) - Disabled for sign */}
+                    {!isSign && (
+                        <View
+                            style={[handleStyle, { top: 0, left: 0 }]}
+                            {...rotateResponder.panHandlers}
+                        >
+                            <Text style={{ color: '#007AFF', fontSize: 18, lineHeight: 20 }}>↻</Text>
+                        </View>
+                    )}
 
                     {/* Bottom-Left: Edit Text (✎) */}
                     {isText && (
@@ -613,23 +713,29 @@ const styles = StyleSheet.create({
     header: {
         paddingHorizontal: 20,
         paddingVertical: 12,
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
+        flexDirection: 'column',
+        alignItems: 'stretch',
+        gap: 12,
     },
     title: {
         color: '#fff',
         fontSize: 18,
         fontWeight: '700',
     },
-    headerTools: {
+    toolsRow: {
         flexDirection: 'row',
-        gap: 10,
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        width: '100%',
+    },
+    toolsGroup: {
+        flexDirection: 'row',
+        gap: 8,
     },
     toolBtn: {
         backgroundColor: 'rgba(255,255,255,0.15)',
         paddingHorizontal: 12,
-        paddingVertical: 6,
+        paddingVertical: 8,
         borderRadius: 8,
     },
     toolBtnText: {

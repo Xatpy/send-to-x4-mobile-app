@@ -3,6 +3,7 @@ import { getScreensaverQueue, updateScreensaverStatus } from './screensaver_queu
 import { convertImageToScreensaverBmp } from './image_converter';
 import { uploadScreensaverToCrossPoint } from './crosspoint_upload';
 import { getCurrentIp } from './settings';
+import { generateAndSaveThumbnail } from './thumbnail_generator';
 
 export interface ScreensaverDumpResult {
     total: number;
@@ -53,6 +54,9 @@ export async function processScreensaverQueue(
             }
 
             if (uploadResult.success) {
+                // Generate a local thumbnail mapping for the sent item
+                await generateAndSaveThumbnail(item.uri, item.filename);
+
                 await updateScreensaverStatus(item.id, 'success');
                 succeeded++;
             } else {

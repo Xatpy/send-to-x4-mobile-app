@@ -20,7 +20,7 @@ import {
     RefreshControl,
     Animated,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 
 import { useConnection } from '../contexts/ConnectionProvider';
@@ -28,6 +28,7 @@ import type { RemoteFile } from '../types';
 import { getCurrentIp, getArticleFolder, getDeviceBaseUrl } from '../services/settings';
 import { listCrossPointFiles, deleteCrossPointFile, listCrossPointSleepFiles, deleteCrossPointSleepFile } from '../services/crosspoint_upload';
 import { listStockFiles, deleteStockFile } from '../services/x4_upload';
+import { getPreviewMapping, removePreviewMapping } from '../services/preview_cache';
 
 const DATE_FOLDER_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -41,6 +42,7 @@ export function DeviceScreen() {
     const [screensavers, setScreensavers] = useState<RemoteFile[]>([]);
     const [loading, setLoading] = useState(false);
     const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
+    const [previewMap, setPreviewMap] = useState<Record<string, string>>({});
 
     /**
      * Discover date-named subfolders inside the base article folder.
@@ -129,19 +131,30 @@ export function DeviceScreen() {
             }
         })();
 
+        const loadPrevewCachePromise = (async () => {
+            try {
+                const map = await getPreviewMapping();
+                setPreviewMap(map);
+            } catch (e) {
+                console.warn('Failed to load preview map', e);
+            }
+        })();
+
         // Wait for both to finish before hiding loader
-        await Promise.allSettled([loadArticlesPromise, loadScreensaversPromise]);
+        await Promise.allSettled([loadArticlesPromise, loadScreensaversPromise, loadPrevewCachePromise]);
         setLoading(false);
     }, [settings, connectionStatus.connected, listDateSubfolders]);
 
-    useEffect(() => {
-        if (connectionStatus.connected) {
-            loadFiles();
-        } else {
-            setArticles([]);
-            setScreensavers([]);
-        }
-    }, [connectionStatus.connected, loadFiles]);
+    useFocusEffect(
+        useCallback(() => {
+            if (connectionStatus.connected) {
+                loadFiles();
+            } else {
+                setArticles([]);
+                setScreensavers([]);
+            }
+        }, [connectionStatus.connected, loadFiles])
+    );
 
     const handleDeleteArticle = (file: RemoteFile) => {
         const fileId = getFileId(file);
@@ -187,6 +200,7 @@ export function DeviceScreen() {
 
                     if (success) {
                         setScreensavers(prev => prev.filter(f => getFileId(f) !== fileId));
+                        await removePreviewMapping(filename);
                     } else {
                         Alert.alert('Error', 'Failed to delete file');
                     }
@@ -241,6 +255,7 @@ export function DeviceScreen() {
                             <FileRow
                                 key={getFileId(file)}
                                 file={file}
+                                cachedPreviewUrl={previewMap[file.name]}
                                 onDelete={() => handleDeleteArticle(file)}
                                 deleting={deleteLoading === getFileId(file)}
                                 disabled={deleteLoading !== null}
@@ -268,6 +283,7 @@ export function DeviceScreen() {
                                 <FileRow
                                     key={getFileId(file)}
                                     file={file}
+                                    cachedPreviewUrl={previewMap[file.name]}
                                     onDelete={() => handleDeleteScreensaver(file)}
                                     deleting={deleteLoading === getFileId(file)}
                                     disabled={deleteLoading !== null}
@@ -282,20 +298,25 @@ export function DeviceScreen() {
 }
 
 /** Reusable row for a single file */
-import { useRef } from 'react';
+import { Image } from 'react-native';
 
 function FileRow({
     file,
+    cachedPreviewUrl,
     onDelete,
     deleting,
     disabled,
 }: {
     file: RemoteFile;
+    cachedPreviewUrl?: string;
     onDelete: () => void;
     deleting: boolean;
     disabled: boolean;
 }) {
-    const swipeableRef = useRef<Swipeable>(null);
+    const swipeableRef = React.useRef<Swipeable>(null);
+    const [previewUri, setPreviewUri] = React.useState<string | null>(null);
+    const [previewLoading, setPreviewLoading] = React.useState(false);
+
     const renderRightActions = (progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
         const scale = dragX.interpolate({
             inputRange: [-60, -30, 0],
@@ -329,28 +350,71 @@ function FileRow({
             enabled={!disabled}
             onSwipeableOpen={handleSwipeOpen}
         >
-            <View style={styles.fileItem}>
-                <View style={styles.fileInfo}>
-                    <Text style={styles.fileName}>{file.name}</Text>
-                    <Text style={styles.fileMeta}>
-                        {file.timestamp
-                            ? new Date(file.timestamp).toLocaleDateString()
-                            : 'Unknown date'}
-                        {file.size ? ` · ${(file.size / 1024).toFixed(1)} KB` : ''}
-                    </Text>
-                </View>
-                {/* Fallback standard bin icon if user prefers tapping without swiping */}
-                <TouchableOpacity
-                    style={styles.deleteButton}
-                    onPress={onDelete}
-                    disabled={disabled}
-                >
-                    {deleting ? (
-                        <ActivityIndicator size="small" color="#ff4444" />
-                    ) : (
-                        <Text style={styles.deleteIcon}>🗑️</Text>
+            <View style={styles.fileItemContainer}>
+                <View style={[styles.fileItem, previewUri ? styles.fileItemOpen : null]}>
+                    {cachedPreviewUrl && (
+                        <TouchableOpacity
+                            style={styles.previewButton}
+                            onPress={() => {
+                                if (previewUri) {
+                                    setPreviewUri(null);
+                                } else {
+                                    setPreviewLoading(true);
+                                    setPreviewUri(cachedPreviewUrl);
+                                }
+                            }}
+                            disabled={disabled}
+                        >
+                            <Image
+                                source={{ uri: cachedPreviewUrl }}
+                                style={[styles.rowThumbnail, previewUri && styles.rowThumbnailActive]}
+                                resizeMode="cover"
+                            />
+                        </TouchableOpacity>
                     )}
-                </TouchableOpacity>
+
+                    <View style={styles.fileInfo}>
+                        <Text style={styles.fileName}>{file.name}</Text>
+                        <Text style={styles.fileMeta}>
+                            {file.timestamp
+                                ? new Date(file.timestamp).toLocaleDateString()
+                                : 'Unknown date'}
+                            {file.size ? ` · ${(file.size / 1024).toFixed(1)} KB` : ''}
+                        </Text>
+                    </View>
+
+                    {/* Fallback standard bin icon if user prefers tapping without swiping */}
+                    <TouchableOpacity
+                        style={styles.deleteButton}
+                        onPress={onDelete}
+                        disabled={disabled}
+                    >
+                        {deleting ? (
+                            <ActivityIndicator size="small" color="#ff4444" />
+                        ) : (
+                            <Text style={styles.deleteIcon}>🗑️</Text>
+                        )}
+                    </TouchableOpacity>
+                </View>
+
+                {previewUri && (
+                    <View style={styles.previewContainer}>
+                        {previewLoading && (
+                            <ActivityIndicator style={styles.previewLoader} size="small" color="#6c63ff" />
+                        )}
+                        <Image
+                            source={{ uri: previewUri }}
+                            style={styles.previewImage}
+                            resizeMode="contain"
+                            onLoadEnd={() => setPreviewLoading(false)}
+                            onError={() => {
+                                setPreviewLoading(false);
+                                Alert.alert("Error", "Could not load preview. The file might be corrupted or the device may be busy.");
+                                setPreviewUri(null);
+                            }}
+                        />
+                    </View>
+                )}
             </View>
         </Swipeable>
     );
@@ -421,13 +485,20 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         marginTop: 16,
     },
+    fileItemContainer: {
+        marginBottom: 8,
+        borderRadius: 8,
+        backgroundColor: '#1f1f35',
+        overflow: 'hidden',
+    },
     fileItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#1f1f35', // Give it a solid color to hide the background action
         padding: 12,
-        borderRadius: 8,
-        marginBottom: 8,
+    },
+    fileItemOpen: {
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255,255,255,0.05)',
     },
     fileInfo: {
         flex: 1,
@@ -460,4 +531,37 @@ const styles = StyleSheet.create({
         color: 'white',
         fontSize: 24,
     },
+    previewButton: {
+        padding: 4,
+        marginRight: 10,
+        marginLeft: -4,
+    },
+    rowThumbnail: {
+        width: 24,
+        height: 40,
+        borderRadius: 4,
+        opacity: 0.8,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+    },
+    rowThumbnailActive: {
+        opacity: 1,
+        borderColor: '#6c63ff',
+        borderWidth: 1.5,
+    },
+    previewContainer: {
+        width: '100%',
+        backgroundColor: 'rgba(0,0,0,0.15)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: 150,
+        padding: 12,
+    },
+    previewLoader: {
+        position: 'absolute',
+    },
+    previewImage: {
+        width: '100%',
+        height: 200,
+        borderRadius: 4,
+    }
 });

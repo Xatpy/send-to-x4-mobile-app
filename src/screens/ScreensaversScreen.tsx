@@ -35,6 +35,7 @@ import {
     clearScreensaverQueue
 } from '../services/screensaver_queue';
 import { processScreensaverQueue } from '../services/screensaver_processor';
+import { generateAndSaveThumbnail } from '../services/thumbnail_generator';
 import type { QueuedScreensaver } from '../types';
 
 interface ScreensaversScreenProps {
@@ -128,6 +129,9 @@ export function ScreensaversScreen({ sharedImage, onSharedImageConsumed }: Scree
             if (!result.success) {
                 throw new Error(result.error || 'Upload failed');
             }
+
+            // Generate and save a tiny local thumbnail for the device screen
+            await generateAndSaveThumbnail(uri, bmp.filename);
 
             Alert.alert('Success! ✓', `Screensaver "${bmp.filename}" has been sent to your X4.`);
         } catch (error) {

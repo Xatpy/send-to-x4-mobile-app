@@ -6,6 +6,7 @@ import { useConnection } from '../contexts/ConnectionProvider';
 import { uploadScreensaverToCrossPoint } from '../services/crosspoint_upload';
 import { getCurrentIp } from '../services/settings';
 import { addRecentWallpaper } from '../services/wallpaper_storage';
+import { savePreviewMapping } from '../services/preview_cache';
 
 // Floating Circular Icon Button
 function FloatingIconButton({ icon, active, onPress, position }: { icon: string, active: boolean, onPress: () => void, position: 'left' | 'right' }) {
@@ -113,8 +114,10 @@ export function SleepScreenDetail({ navigation, route }: any) {
             const result = await uploadScreensaverToCrossPoint(ip, bmpBytes, filename);
 
             if (result.success) {
-                // 3. Save to recent storage
+                // 3. Save to recent storage & preview cache
                 await addRecentWallpaper(currentItem);
+                await savePreviewMapping(filename, currentItem.webpUrl);
+
                 Alert.alert('Success', 'Wallpaper sent to X4!', [
                     { text: 'OK', onPress: () => navigation.goBack() }
                 ]);
