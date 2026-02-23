@@ -248,7 +248,9 @@ export function SleepScreenDetail({ navigation, route }: any) {
                     </TouchableOpacity>
                 </View>
 
-                <Text style={styles.attributionText}>Powered by lowio.xyz</Text>
+                <Text style={styles.attributionText}>
+                    Powered by {isRandom ? 'readme.club/dev' : 'x4epapers.lowio.xyz'}
+                </Text>
             </View>
         </View>
     );

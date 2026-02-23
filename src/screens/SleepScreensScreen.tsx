@@ -114,7 +114,7 @@ export function SleepScreensScreen({ navigation }: any) {
             <View style={styles.header}>
                 <View style={styles.titleContainer}>
                     <Text style={styles.title}>x4ePapers</Text>
-                    <Text style={styles.subtitle}>Browse and send X4-ready wallpapers</Text>
+                    <Text style={styles.subtitle}>Browse from lowio.xyz & readme.club/api</Text>
                 </View>
                 <TouchableOpacity
                     style={[styles.randomButton, randomLoading && styles.randomButtonDisabled]}
