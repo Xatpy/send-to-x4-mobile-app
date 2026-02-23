@@ -7,6 +7,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useShareIntent } from 'expo-share-intent';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { ConnectionProvider, useConnection } from './src/contexts/ConnectionProvider';
 import { ConnectionBanner } from './src/components/ConnectionBanner';
@@ -16,6 +17,8 @@ import { SettingsScreen } from './src/screens/SettingsScreen';
 import { DeviceScreen } from './src/screens/DeviceScreen';
 import { NotesScreen } from './src/screens/NotesScreen';
 import { SleepScreenTab } from './src/screens/SleepScreenTab';
+import { SleepScreensScreen } from './src/screens/SleepScreensScreen';
+import { SleepScreenDetail } from './src/screens/SleepScreenDetail';
 import { isValidUrl } from './src/utils/sanitizer';
 
 // Keep the splash screen visible while we fetch resources
@@ -95,10 +98,19 @@ function MainTabs({ sharedUrl, setSharedUrl, sharedImage, setSharedImage }: any)
         </Tab.Screen>
 
         <Tab.Screen
-          name="Design Your Sleep Screen"
+          name="Design"
           component={SleepScreenTab}
           options={{
-            tabBarIcon: ({ focused }) => <TabIcon label="🌙" focused={focused} />,
+            tabBarIcon: ({ focused }) => <TabIcon label="🎨" focused={focused} />,
+            tabBarLabelStyle: { fontSize: 9, fontWeight: '600' }
+          }}
+        />
+
+        <Tab.Screen
+          name="x4ePapers"
+          component={SleepScreensScreen}
+          options={{
+            tabBarIcon: ({ focused }) => <TabIcon label="🌌" focused={focused} />,
             tabBarLabelStyle: { fontSize: 9, fontWeight: '600' }
           }}
         />
@@ -201,6 +213,7 @@ function AppContent() {
             )}
           </Stack.Screen>
           <Stack.Screen name="Settings" component={SettingsScreen} />
+          <Stack.Screen name="SleepScreenDetail" component={SleepScreenDetail} />
         </Stack.Navigator>
       </SafeAreaView>
     </NavigationContainer>
@@ -234,12 +247,14 @@ export default function App() {
   }
 
   return (
-    <SafeAreaProvider onLayout={onLayoutRootView}>
-      <StatusBar style="light" />
-      <ConnectionProvider>
-        <AppContent />
-      </ConnectionProvider>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider onLayout={onLayoutRootView}>
+        <StatusBar style="light" />
+        <ConnectionProvider>
+          <AppContent />
+        </ConnectionProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 

@@ -18,8 +18,10 @@ import {
     Alert,
     ActivityIndicator,
     RefreshControl,
+    Animated,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import Swipeable from 'react-native-gesture-handler/Swipeable';
 
 import { useConnection } from '../contexts/ConnectionProvider';
 import type { RemoteFile } from '../types';
@@ -28,6 +30,8 @@ import { listCrossPointFiles, deleteCrossPointFile, listCrossPointSleepFiles, de
 import { listStockFiles, deleteStockFile } from '../services/x4_upload';
 
 const DATE_FOLDER_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+const getFileId = (file: RemoteFile) => file.folder ? `${file.folder}/${file.name}` : file.name;
 
 export function DeviceScreen() {
     const { settings, connectionStatus } = useConnection();
@@ -140,12 +144,13 @@ export function DeviceScreen() {
     }, [connectionStatus.connected, loadFiles]);
 
     const handleDeleteArticle = (file: RemoteFile) => {
+        const fileId = getFileId(file);
         Alert.alert('Delete File', `Delete "${file.name}"?`, [
             { text: 'Cancel', style: 'cancel' },
             {
                 text: 'Delete', style: 'destructive',
                 onPress: async () => {
-                    setDeleteLoading(file.name);
+                    setDeleteLoading(fileId);
                     const ip = getCurrentIp(settings);
                     const folder = file.folder || getArticleFolder(settings);
                     const filename = file.rawName || file.name;
@@ -158,7 +163,7 @@ export function DeviceScreen() {
                     }
 
                     if (success) {
-                        setArticles(prev => prev.filter(f => f.name !== file.name));
+                        setArticles(prev => prev.filter(f => getFileId(f) !== fileId));
                     } else {
                         Alert.alert('Error', 'Failed to delete file');
                     }
@@ -169,18 +174,19 @@ export function DeviceScreen() {
     };
 
     const handleDeleteScreensaver = (file: RemoteFile) => {
+        const fileId = getFileId(file);
         Alert.alert('Delete File', `Delete "${file.name}"?`, [
             { text: 'Cancel', style: 'cancel' },
             {
                 text: 'Delete', style: 'destructive',
                 onPress: async () => {
-                    setDeleteLoading(file.name);
+                    setDeleteLoading(fileId);
                     const ip = getCurrentIp(settings);
                     const filename = file.rawName || file.name;
                     const success = await deleteCrossPointSleepFile(ip, filename);
 
                     if (success) {
-                        setScreensavers(prev => prev.filter(f => f.name !== file.name));
+                        setScreensavers(prev => prev.filter(f => getFileId(f) !== fileId));
                     } else {
                         Alert.alert('Error', 'Failed to delete file');
                     }
@@ -233,10 +239,10 @@ export function DeviceScreen() {
                     ) : (
                         articles.map(file => (
                             <FileRow
-                                key={file.name}
+                                key={getFileId(file)}
                                 file={file}
                                 onDelete={() => handleDeleteArticle(file)}
-                                deleting={deleteLoading === file.name}
+                                deleting={deleteLoading === getFileId(file)}
                                 disabled={deleteLoading !== null}
                             />
                         ))
@@ -260,10 +266,10 @@ export function DeviceScreen() {
                         ) : (
                             screensavers.map(file => (
                                 <FileRow
-                                    key={file.name}
+                                    key={getFileId(file)}
                                     file={file}
                                     onDelete={() => handleDeleteScreensaver(file)}
-                                    deleting={deleteLoading === file.name}
+                                    deleting={deleteLoading === getFileId(file)}
                                     disabled={deleteLoading !== null}
                                 />
                             ))
@@ -276,6 +282,8 @@ export function DeviceScreen() {
 }
 
 /** Reusable row for a single file */
+import { useRef } from 'react';
+
 function FileRow({
     file,
     onDelete,
@@ -287,29 +295,64 @@ function FileRow({
     deleting: boolean;
     disabled: boolean;
 }) {
-    return (
-        <View style={styles.fileItem}>
-            <View style={styles.fileInfo}>
-                <Text style={styles.fileName}>{file.name}</Text>
-                <Text style={styles.fileMeta}>
-                    {file.timestamp
-                        ? new Date(file.timestamp).toLocaleDateString()
-                        : 'Unknown date'}
-                    {file.size ? ` · ${(file.size / 1024).toFixed(1)} KB` : ''}
-                </Text>
+    const swipeableRef = useRef<Swipeable>(null);
+    const renderRightActions = (progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
+        const scale = dragX.interpolate({
+            inputRange: [-60, -30, 0],
+            outputRange: [1, 0.8, 0],
+            extrapolate: 'clamp',
+        });
+
+        // The background that shows while dragging
+        return (
+            <View style={styles.deleteAction}>
+                <Animated.Text style={[styles.deleteActionText, { transform: [{ scale }] }]}>
+                    🗑️
+                </Animated.Text>
             </View>
-            <TouchableOpacity
-                style={styles.deleteButton}
-                onPress={onDelete}
-                disabled={disabled}
-            >
-                {deleting ? (
-                    <ActivityIndicator size="small" color="#ff4444" />
-                ) : (
-                    <Text style={styles.deleteIcon}>🗑️</Text>
-                )}
-            </TouchableOpacity>
-        </View>
+        );
+    };
+
+    const handleSwipeOpen = () => {
+        // Trigger the delete flow immediately
+        onDelete();
+        // Since `onDelete` pops an alert, we can close the row visually in the background
+        swipeableRef.current?.close();
+    };
+
+    return (
+        <Swipeable
+            ref={swipeableRef}
+            renderRightActions={renderRightActions}
+            friction={1}
+            rightThreshold={35}
+            enabled={!disabled}
+            onSwipeableOpen={handleSwipeOpen}
+        >
+            <View style={styles.fileItem}>
+                <View style={styles.fileInfo}>
+                    <Text style={styles.fileName}>{file.name}</Text>
+                    <Text style={styles.fileMeta}>
+                        {file.timestamp
+                            ? new Date(file.timestamp).toLocaleDateString()
+                            : 'Unknown date'}
+                        {file.size ? ` · ${(file.size / 1024).toFixed(1)} KB` : ''}
+                    </Text>
+                </View>
+                {/* Fallback standard bin icon if user prefers tapping without swiping */}
+                <TouchableOpacity
+                    style={styles.deleteButton}
+                    onPress={onDelete}
+                    disabled={disabled}
+                >
+                    {deleting ? (
+                        <ActivityIndicator size="small" color="#ff4444" />
+                    ) : (
+                        <Text style={styles.deleteIcon}>🗑️</Text>
+                    )}
+                </TouchableOpacity>
+            </View>
+        </Swipeable>
     );
 }
 
@@ -381,7 +424,7 @@ const styles = StyleSheet.create({
     fileItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: 'rgba(255,255,255,0.05)',
+        backgroundColor: '#1f1f35', // Give it a solid color to hide the background action
         padding: 12,
         borderRadius: 8,
         marginBottom: 8,
@@ -403,5 +446,18 @@ const styles = StyleSheet.create({
     },
     deleteIcon: {
         fontSize: 16,
+    },
+    deleteAction: {
+        backgroundColor: '#ff4444',
+        justifyContent: 'center',
+        alignItems: 'flex-end',
+        marginBottom: 8,
+        borderRadius: 8,
+        flex: 1, // Fill available space behind the row
+        paddingHorizontal: 20,
+    },
+    deleteActionText: {
+        color: 'white',
+        fontSize: 24,
     },
 });

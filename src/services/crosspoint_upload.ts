@@ -436,7 +436,7 @@ export async function listCrossPointSleepFiles(ip: string): Promise<RemoteFile[]
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 10000);
 
-        const response = await fetch(`${baseUrl}/api/files?path=/${SLEEP_FOLDER}`, {
+        const response = await fetch(`${baseUrl}/api/files?path=${encodeURIComponent('/' + SLEEP_FOLDER)}`, {
             signal: controller.signal,
         });
 
@@ -449,13 +449,20 @@ export async function listCrossPointSleepFiles(ip: string): Promise<RemoteFile[]
         if (!Array.isArray(items)) return [];
 
         return items
-            .filter((item: any) => !item.isDirectory && item.name.endsWith('.bmp'))
-            .map((item: any) => ({
-                name: decodeURIComponent(item.name),
-                rawName: item.name,
-                size: item.size,
-                timestamp: item.lastModified || undefined,
-            }))
+            .filter((item: any) => {
+                const isDir = item.isDirectory === true || item.type === 'dir';
+                const hasBmp = item.name && typeof item.name === 'string' && item.name.toLowerCase().endsWith('.bmp');
+                return !isDir && hasBmp;
+            })
+            .map((item: any) => {
+                const decodedName = decodeURIComponent(item.name).trim();
+                return {
+                    name: decodedName,
+                    rawName: item.name,
+                    size: item.size,
+                    timestamp: item.lastModified || parseDateFromFilename(decodedName) || undefined,
+                };
+            })
             .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
     } catch (error) {
