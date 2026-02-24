@@ -4,6 +4,7 @@ import { uploadToStock } from '../services/x4_upload';
 import { getCurrentIp } from '../services/settings';
 import { convertImageToScreensaverBmp } from '../services/image_converter';
 import * as FileSystem from 'expo-file-system/legacy';
+import { generateAndSaveThumbnail } from '../services/thumbnail_generator';
 
 export async function processAndSendSleepScreen(
     viewShotUri: string,
@@ -16,13 +17,22 @@ export async function processAndSendSleepScreen(
         // We know the source View is already at the correct aspect ratio, so we don't need to specify sizes
         const { data, filename } = await convertImageToScreensaverBmp(viewShotUri);
 
+        let uploadResult;
+
         if (settings.firmwareType === 'crosspoint') {
             // Send to sleep folder on CrossPoint
-            return await uploadScreensaverToCrossPoint(ip, data, filename);
+            uploadResult = await uploadScreensaverToCrossPoint(ip, data, filename);
         } else {
             // Upload to stock (we use 'sleep' fallback directory)
-            return await uploadToStock(ip, data, filename, 'sleep');
+            uploadResult = await uploadToStock(ip, data, filename, 'sleep');
         }
+
+        if (uploadResult?.success) {
+            // Locally cache the high-quality viewShot to display in the Device tab list
+            await generateAndSaveThumbnail(viewShotUri, filename);
+        }
+
+        return uploadResult;
     } catch (e) {
         return { success: false, error: e instanceof Error ? e.message : 'Upload failed' };
     }
