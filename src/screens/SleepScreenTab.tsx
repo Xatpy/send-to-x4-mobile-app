@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import ViewShot from 'react-native-view-shot';
+import Svg, { Path } from 'react-native-svg';
 import * as ImagePicker from 'expo-image-picker';
 
 import { useConnection } from '../contexts/ConnectionProvider';
@@ -45,12 +46,54 @@ export function SleepScreenTab() {
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [editingTextId, setEditingTextId] = useState<string | null>(null);
     const [isInverted, setIsInverted] = useState(false);
+    const [isDrawingMode, setIsDrawingMode] = useState(false);
+    const [doodlePaths, setDoodlePaths] = useState<string[]>([]);
+    const [currentPath, setCurrentPath] = useState<string>('');
+
+    // Keep context mutable for the PanResponder closure
+    const drawingContext = useRef({
+        isDrawingMode,
+        setCurrentPath,
+        setDoodlePaths
+    });
+    useEffect(() => {
+        drawingContext.current = { isDrawingMode, setCurrentPath, setDoodlePaths };
+    }, [isDrawingMode, setCurrentPath, setDoodlePaths]);
 
     const [isSending, setIsSending] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
     const viewShotRef = useRef<ViewShot>(null);
+
+    const handleDrawingEnd = () => {
+        if (!drawingContext.current.isDrawingMode) return;
+        drawingContext.current.setCurrentPath(prev => {
+            if (prev) {
+                drawingContext.current.setDoodlePaths(paths => [...paths, prev]);
+            }
+            return '';
+        });
+    };
+
+    const drawingResponder = useRef(
+        PanResponder.create({
+            onStartShouldSetPanResponder: () => drawingContext.current.isDrawingMode,
+            onMoveShouldSetPanResponder: () => drawingContext.current.isDrawingMode,
+            onPanResponderGrant: (evt) => {
+                if (!drawingContext.current.isDrawingMode) return;
+                const { locationX, locationY } = evt.nativeEvent;
+                drawingContext.current.setCurrentPath(`M ${locationX} ${locationY}`);
+            },
+            onPanResponderMove: (evt) => {
+                if (!drawingContext.current.isDrawingMode) return;
+                const { locationX, locationY } = evt.nativeEvent;
+                drawingContext.current.setCurrentPath(prev => `${prev} L ${locationX} ${locationY}`);
+            },
+            onPanResponderRelease: handleDrawingEnd,
+            onPanResponderTerminate: handleDrawingEnd,
+        })
+    ).current;
 
     const selectedElement = elements.find(e => e.id === selectedId);
     const editingElement = elements.find(e => e.id === editingTextId);
@@ -144,6 +187,8 @@ export function SleepScreenTab() {
                     style: 'destructive',
                     onPress: () => {
                         setElements([]);
+                        setDoodlePaths([]);
+                        setCurrentPath('');
                         setSelectedId(null);
                         setEditingTextId(null);
                     }
@@ -169,8 +214,8 @@ export function SleepScreenTab() {
     };
 
     const handleSend = async () => {
-        if (elements.length === 0) {
-            Alert.alert('Empty', 'Add some elements to the canvas first.');
+        if (elements.length === 0 && doodlePaths.length === 0 && !currentPath) {
+            Alert.alert('Empty', 'Add some elements or draw on the canvas first.');
             return;
         }
         if (!connectionStatus.connected) {
@@ -201,7 +246,7 @@ export function SleepScreenTab() {
     };
 
     const handleSave = async () => {
-        if (elements.length === 0) return;
+        if (elements.length === 0 && doodlePaths.length === 0 && !currentPath) return;
         setIsSaving(true);
         setSuccessMessage(null);
 
@@ -251,22 +296,25 @@ export function SleepScreenTab() {
                 <View style={styles.toolsRow}>
                     <View style={styles.toolsGroup}>
                         <TouchableOpacity style={styles.toolBtn} onPress={handleAddSign}>
-                            <Text style={styles.toolBtnText}>+ Sign</Text>
+                            <Text style={styles.iconBtnText}>🪧</Text>
                         </TouchableOpacity>
                         <TouchableOpacity style={styles.toolBtn} onPress={handleAddText}>
-                            <Text style={styles.toolBtnText}>+ Text</Text>
+                            <Text style={styles.iconBtnText}>🔤</Text>
                         </TouchableOpacity>
                         <TouchableOpacity style={styles.toolBtn} onPress={handleAddImage}>
-                            <Text style={styles.toolBtnText}>+ Image</Text>
+                            <Text style={styles.iconBtnText}>🖼️</Text>
                         </TouchableOpacity>
                     </View>
 
                     <View style={styles.toolsGroup}>
-                        <TouchableOpacity style={styles.toolBtn} onPress={() => setIsInverted(!isInverted)}>
-                            <Text style={styles.toolBtnText}>{isInverted ? 'B/W' : 'Invert'}</Text>
+                        <TouchableOpacity style={[styles.toolBtn, isDrawingMode && styles.toolBtnActive]} onPress={() => setIsDrawingMode(!isDrawingMode)}>
+                            <Text style={styles.iconBtnText}>✍️</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[styles.toolBtn, isInverted && styles.toolBtnActive]} onPress={() => setIsInverted(!isInverted)}>
+                            <Text style={styles.iconBtnText}>◑</Text>
                         </TouchableOpacity>
                         <TouchableOpacity style={styles.toolBtn} onPress={handleClear}>
-                            <Text style={styles.toolBtnText}>Reset</Text>
+                            <Text style={styles.iconBtnText}>🗑️</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -291,6 +339,14 @@ export function SleepScreenTab() {
 
                 <View style={[styles.canvasBoundary, { aspectRatio: X4_WIDTH_PX / X4_HEIGHT_PX }]}>
                     <ViewShot ref={viewShotRef} style={{ flex: 1, backgroundColor: isInverted ? '#000' : '#fff', overflow: 'hidden' }} options={{ format: 'png', quality: 1 }}>
+                        <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
+                            {doodlePaths.map((path, index) => (
+                                <Path key={index} d={path} stroke={isInverted ? '#fff' : '#000'} strokeWidth={5} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                            ))}
+                            {currentPath ? (
+                                <Path d={currentPath} stroke={isInverted ? '#fff' : '#000'} strokeWidth={5} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                            ) : null}
+                        </Svg>
                         {elements.map(el => (
                             <DraggableElement
                                 key={el.id}
@@ -304,6 +360,13 @@ export function SleepScreenTab() {
                                 onChange={(updates) => updateElement(el.id, updates)}
                             />
                         ))}
+                        {/* Drawing Layer Overlay - Intercepts touches over everything when active */}
+                        {isDrawingMode && (
+                            <View
+                                style={[StyleSheet.absoluteFill, { zIndex: 999 }]}
+                                {...drawingResponder.panHandlers}
+                            />
+                        )}
                     </ViewShot>
                 </View>
 
@@ -318,7 +381,7 @@ export function SleepScreenTab() {
                         title="SAVE AS BMP"
                         onPress={handleSave}
                         loading={isSaving}
-                        disabled={elements.length === 0 || isSending || isSaving}
+                        disabled={(elements.length === 0 && doodlePaths.length === 0 && !currentPath) || isSending || isSaving}
                         variant="secondary"
                     />
                 </View>
@@ -328,7 +391,7 @@ export function SleepScreenTab() {
                         title="SEND TO X4"
                         onPress={handleSend}
                         loading={isSending}
-                        disabled={elements.length === 0 || isSending || isSaving}
+                        disabled={(elements.length === 0 && doodlePaths.length === 0 && !currentPath) || isSending || isSaving}
                         variant="primary"
                     />
                 </View>
@@ -734,14 +797,18 @@ const styles = StyleSheet.create({
     },
     toolBtn: {
         backgroundColor: 'rgba(255,255,255,0.15)',
-        paddingHorizontal: 12,
-        paddingVertical: 8,
+        width: 36,
+        height: 36,
+        justifyContent: 'center',
+        alignItems: 'center',
         borderRadius: 8,
     },
-    toolBtnText: {
+    toolBtnActive: {
+        backgroundColor: '#007AFF',
+    },
+    iconBtnText: {
         color: '#fff',
-        fontWeight: '600',
-        fontSize: 13,
+        fontSize: 18,
     },
     canvasArea: {
         flex: 1,
