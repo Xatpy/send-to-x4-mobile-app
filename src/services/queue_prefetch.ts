@@ -49,10 +49,10 @@ async function ensureCacheDir(): Promise<void> {
  * On failure, returns { success: false, error } — caller should still
  * queue the URL (without cache) as a fallback.
  */
-export async function prefetchArticle(url: string): Promise<PrefetchResult> {
+export async function prefetchArticle(url: string, options?: { includeImages?: boolean }): Promise<PrefetchResult> {
     try {
         // 1. Extract article content
-        const extraction = await extractArticle(url);
+        const extraction = await extractArticle(url, options);
 
         if (!extraction.success || !extraction.article) {
             return {

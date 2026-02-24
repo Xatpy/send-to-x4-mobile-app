@@ -1,9 +1,10 @@
 /**
  * DeviceScreen — Tab showing files on the connected X4 device.
  *
- * Two sections:
- *   - Articles: files in /send-to-x4 (.epub, .txt)
- *   - Screensavers: files in /sleep (.bmp)
+ * Sections are discovered recursively from configured roots:
+ *   - Articles: files in article folder tree (.epub, .txt)
+ *   - Notes: files in note folder tree (.txt)
+ *   - Screensavers: files in /sleep tree (.bmp, CrossPoint)
  *
  * Only accessible when device is connected.
  */
@@ -20,111 +21,171 @@ import {
     RefreshControl,
     Animated,
 } from 'react-native';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from '@react-navigation/native';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 
 import { useConnection } from '../contexts/ConnectionProvider';
 import type { RemoteFile } from '../types';
-import { getCurrentIp, getArticleFolder, getDeviceBaseUrl } from '../services/settings';
-import { listCrossPointFiles, deleteCrossPointFile, listCrossPointSleepFiles, deleteCrossPointSleepFile } from '../services/crosspoint_upload';
-import { listStockFiles, deleteStockFile } from '../services/x4_upload';
+import { getCurrentIp, getArticleFolder, getNoteFolder, getDeviceBaseUrl } from '../services/settings';
+import { deleteCrossPointFile } from '../services/crosspoint_upload';
+import { deleteStockFile } from '../services/x4_upload';
 import { getPreviewMapping, removePreviewMapping } from '../services/preview_cache';
-
-const DATE_FOLDER_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 const getFileId = (file: RemoteFile) => file.folder ? `${file.folder}/${file.name}` : file.name;
 
+function safeDecodeURIComponent(str: string): string {
+    try {
+        return decodeURIComponent(str);
+    } catch {
+        return str;
+    }
+}
+
+function normalizeFolderPath(path: string): string {
+    return path.replace(/^\/+/, '').replace(/\/+$/, '');
+}
+
+function decodeFolderPath(path: string): string {
+    return normalizeFolderPath(path)
+        .split('/')
+        .map((segment) => safeDecodeURIComponent(segment))
+        .join('/');
+}
+
+function joinFolderPath(parent: string, child: string): string {
+    const p = normalizeFolderPath(parent);
+    const c = normalizeFolderPath(child);
+    if (!p) return c;
+    if (!c) return p;
+    return `${p}/${c}`;
+}
+
+function getExt(name: string): string {
+    const idx = name.lastIndexOf('.');
+    if (idx < 0) return '';
+    return name.slice(idx).toLowerCase();
+}
+
+async function fetchDirectoryItems(
+    baseUrl: string,
+    firmwareType: 'stock' | 'crosspoint',
+    folder: string
+): Promise<any[] | null> {
+    const normalized = decodeFolderPath(folder);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    try {
+        const response = firmwareType === 'crosspoint'
+            ? await fetch(`${baseUrl}/api/files?path=${encodeURIComponent('/' + normalized)}`, { signal: controller.signal })
+            : await fetch(`${baseUrl}/list?dir=${encodeURIComponent('/' + normalized + '/')}`, { signal: controller.signal });
+
+        if (!response.ok) return null;
+        const items = await response.json();
+        return Array.isArray(items) ? items : null;
+    } catch {
+        return null;
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
+async function deepScanFolder(
+    baseUrl: string,
+    firmwareType: 'stock' | 'crosspoint',
+    rootFolder: string,
+    allowedExtensions: string[]
+): Promise<RemoteFile[]> {
+    const root = normalizeFolderPath(rootFolder);
+    if (!root) return [];
+
+    const queue: string[] = [root];
+    const visited = new Set<string>();
+    const results: RemoteFile[] = [];
+    const allowed = new Set(allowedExtensions.map(ext => ext.toLowerCase()));
+
+    while (queue.length > 0) {
+        const currentFolder = queue.shift()!;
+        if (visited.has(currentFolder)) continue;
+        visited.add(currentFolder);
+
+        const items = await fetchDirectoryItems(baseUrl, firmwareType, currentFolder);
+        if (!items) continue;
+
+        for (const item of items) {
+            const rawName = typeof item.name === 'string' ? item.name : '';
+            if (!rawName) continue;
+
+            const isDir = firmwareType === 'crosspoint'
+                ? item.isDirectory === true || item.type === 'dir'
+                : item.type === 'dir';
+
+            if (isDir) {
+                queue.push(joinFolderPath(currentFolder, safeDecodeURIComponent(rawName)));
+                continue;
+            }
+
+            const decodedName = safeDecodeURIComponent(rawName).trim();
+            if (!allowed.has(getExt(decodedName))) continue;
+
+            results.push({
+                name: decodedName,
+                rawName,
+                size: typeof item.size === 'number' ? item.size : undefined,
+                timestamp: typeof item.lastModified === 'number' ? item.lastModified : undefined,
+                folder: currentFolder,
+            });
+        }
+    }
+
+    results.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    return results;
+}
+
 export function DeviceScreen() {
     const { settings, connectionStatus } = useConnection();
-    const navigation = useNavigation<any>();
 
     const [articles, setArticles] = useState<RemoteFile[]>([]);
+    const [notes, setNotes] = useState<RemoteFile[]>([]);
     const [screensavers, setScreensavers] = useState<RemoteFile[]>([]);
     const [loading, setLoading] = useState(false);
     const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
     const [previewMap, setPreviewMap] = useState<Record<string, string>>({});
-
-    /**
-     * Discover date-named subfolders inside the base article folder.
-     */
-    const listDateSubfolders = useCallback(async (ip: string, baseFolder: string): Promise<string[]> => {
-        const baseUrl = getDeviceBaseUrl(ip);
-        try {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 10000);
-
-            let items: any[] = [];
-            if (settings.firmwareType === 'crosspoint') {
-                const res = await fetch(`${baseUrl}/api/files?path=${encodeURIComponent('/' + baseFolder)}`, {
-                    signal: controller.signal,
-                });
-                clearTimeout(timeout);
-                if (res.ok) items = await res.json();
-            } else {
-                const res = await fetch(`${baseUrl}/list?dir=${encodeURIComponent('/' + baseFolder + '/')}`, {
-                    signal: controller.signal,
-                });
-                clearTimeout(timeout);
-                if (res.ok) items = await res.json();
-            }
-
-            if (!Array.isArray(items)) return [];
-            return items
-                .filter((item: any) => {
-                    const isDir = settings.firmwareType === 'crosspoint' ? item.isDirectory : item.type === 'dir';
-                    return isDir && DATE_FOLDER_RE.test(item.name);
-                })
-                .map((item: any) => item.name)
-                .sort()
-                .reverse(); // newest first
-        } catch {
-            return [];
-        }
-    }, [settings.firmwareType]);
 
     const loadFiles = useCallback(async () => {
         if (!connectionStatus.connected) return;
 
         setLoading(true);
         const ip = getCurrentIp(settings);
+        const baseUrl = getDeviceBaseUrl(ip);
         const articleFolder = getArticleFolder(settings);
+        const noteFolder = getNoteFolder(settings);
 
         // Load independently to avoid one blocking the other
         const loadArticlesPromise = (async () => {
             try {
-                if (settings.useDateFolders) {
-                    // Discover date subfolders, list files from each, merge
-                    const subfolders = await listDateSubfolders(ip, articleFolder);
-                    const allFiles: RemoteFile[] = [];
-
-                    // Also list files directly in the base folder (legacy files)
-                    const baseFolders = [articleFolder, ...subfolders.map(sf => `${articleFolder}/${sf}`)];
-
-                    for (const folder of baseFolders) {
-                        const listFn = settings.firmwareType === 'crosspoint' ? listCrossPointFiles : listStockFiles;
-                        const items = await listFn(ip, folder);
-                        allFiles.push(...items.map(f => ({ ...f, folder })));
-                    }
-
-                    allFiles.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-                    setArticles(allFiles);
-                } else if (settings.firmwareType === 'crosspoint') {
-                    const items = await listCrossPointFiles(ip, articleFolder);
-                    setArticles(items.map(f => ({ ...f, folder: articleFolder })));
-                } else {
-                    const items = await listStockFiles(ip, articleFolder);
-                    setArticles(items.map(f => ({ ...f, folder: articleFolder })));
-                    setScreensavers([]); // Clear screensavers for stock
-                }
+                const items = await deepScanFolder(baseUrl, settings.firmwareType, articleFolder, ['.epub', '.txt']);
+                setArticles(items);
             } catch (getError) {
                 console.warn('Failed to load articles:', getError);
             }
         })();
 
-        const loadScreensaversPromise = (async () => {
-            if (settings.firmwareType !== 'crosspoint') return;
+        const loadNotesPromise = (async () => {
             try {
-                const items = await listCrossPointSleepFiles(ip);
+                const items = await deepScanFolder(baseUrl, settings.firmwareType, noteFolder, ['.txt']);
+                setNotes(items);
+            } catch (getError) {
+                console.warn('Failed to load notes:', getError);
+            }
+        })();
+
+        const loadScreensaversPromise = (async () => {
+            if (settings.firmwareType !== 'crosspoint') {
+                setScreensavers([]);
+                return;
+            }
+            try {
+                const items = await deepScanFolder(baseUrl, settings.firmwareType, 'sleep', ['.bmp']);
                 setScreensavers(items);
             } catch (getError) {
                 console.warn('Failed to load screensavers:', getError);
@@ -140,10 +201,10 @@ export function DeviceScreen() {
             }
         })();
 
-        // Wait for both to finish before hiding loader
-        await Promise.allSettled([loadArticlesPromise, loadScreensaversPromise, loadPrevewCachePromise]);
+        // Wait for all to finish before hiding loader
+        await Promise.allSettled([loadArticlesPromise, loadNotesPromise, loadScreensaversPromise, loadPrevewCachePromise]);
         setLoading(false);
-    }, [settings, connectionStatus.connected, listDateSubfolders]);
+    }, [settings, connectionStatus.connected]);
 
     useFocusEffect(
         useCallback(() => {
@@ -151,6 +212,7 @@ export function DeviceScreen() {
                 loadFiles();
             } else {
                 setArticles([]);
+                setNotes([]);
                 setScreensavers([]);
             }
         }, [connectionStatus.connected, loadFiles])
@@ -186,6 +248,36 @@ export function DeviceScreen() {
         ]);
     };
 
+    const handleDeleteNote = (file: RemoteFile) => {
+        const fileId = getFileId(file);
+        Alert.alert('Delete File', `Delete "${file.name}"?`, [
+            { text: 'Cancel', style: 'cancel' },
+            {
+                text: 'Delete', style: 'destructive',
+                onPress: async () => {
+                    setDeleteLoading(fileId);
+                    const ip = getCurrentIp(settings);
+                    const folder = file.folder || getNoteFolder(settings);
+                    const filename = file.rawName || file.name;
+                    let success = false;
+
+                    if (settings.firmwareType === 'crosspoint') {
+                        success = await deleteCrossPointFile(ip, filename, folder);
+                    } else {
+                        success = await deleteStockFile(ip, filename, folder);
+                    }
+
+                    if (success) {
+                        setNotes(prev => prev.filter(f => getFileId(f) !== fileId));
+                    } else {
+                        Alert.alert('Error', 'Failed to delete file');
+                    }
+                    setDeleteLoading(null);
+                },
+            },
+        ]);
+    };
+
     const handleDeleteScreensaver = (file: RemoteFile) => {
         const fileId = getFileId(file);
         Alert.alert('Delete File', `Delete "${file.name}"?`, [
@@ -195,8 +287,9 @@ export function DeviceScreen() {
                 onPress: async () => {
                     setDeleteLoading(fileId);
                     const ip = getCurrentIp(settings);
+                    const folder = file.folder || 'sleep';
                     const filename = file.rawName || file.name;
-                    const success = await deleteCrossPointSleepFile(ip, filename);
+                    const success = await deleteCrossPointFile(ip, filename, folder);
 
                     if (success) {
                         setScreensavers(prev => prev.filter(f => getFileId(f) !== fileId));
@@ -243,7 +336,7 @@ export function DeviceScreen() {
                         </Text>
                     </View>
                     <Text style={styles.sectionPath}>
-                        /{getArticleFolder(settings)}{settings.useDateFolders ? '/yyyy-mm-dd' : ''}
+                        /{getArticleFolder(settings)}/**
                     </Text>
 
                     {loading && articles.length === 0 ? (
@@ -264,15 +357,43 @@ export function DeviceScreen() {
                     )}
                 </View>
 
+                {/* Notes Section */}
+                <View style={styles.section}>
+                    <View style={styles.sectionHeader}>
+                        <Text style={styles.sectionTitle}>
+                            📝  Notes ({notes.length})
+                        </Text>
+                    </View>
+                    <Text style={styles.sectionPath}>
+                        /{getNoteFolder(settings)}/**
+                    </Text>
+
+                    {loading && notes.length === 0 ? (
+                        <ActivityIndicator size="small" color="#fff" style={styles.loader} />
+                    ) : notes.length === 0 ? (
+                        <Text style={styles.emptyListText}>No notes on device</Text>
+                    ) : (
+                        notes.map(file => (
+                            <FileRow
+                                key={getFileId(file)}
+                                file={file}
+                                onDelete={() => handleDeleteNote(file)}
+                                deleting={deleteLoading === getFileId(file)}
+                                disabled={deleteLoading !== null}
+                            />
+                        ))
+                    )}
+                </View>
+
                 {/* Screensavers Section */}
                 {settings.firmwareType === 'crosspoint' && (
                     <View style={styles.section}>
                         <View style={styles.sectionHeader}>
-                            <Text style={styles.sectionTitle}>
-                                🖼️  Screensavers ({screensavers.length})
-                            </Text>
-                        </View>
-                        <Text style={styles.sectionPath}>/sleep</Text>
+                        <Text style={styles.sectionTitle}>
+                            🖼️  Screensavers ({screensavers.length})
+                        </Text>
+                    </View>
+                        <Text style={styles.sectionPath}>/sleep/**</Text>
 
                         {loading && screensavers.length === 0 ? (
                             <ActivityIndicator size="small" color="#fff" style={styles.loader} />

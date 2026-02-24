@@ -27,6 +27,8 @@ import * as Sharing from 'expo-sharing';
 import { X4_WIDTH_PX, X4_HEIGHT_PX } from '../x4/deviceConfig';
 
 export type CanvasElementType = 'text' | 'image' | 'sign';
+const MIN_TEXT_FONT_SIZE = 14;
+const MIN_SIGN_FONT_SIZE = 16;
 
 export interface CanvasElement {
     id: string;
@@ -674,7 +676,7 @@ function DraggableElement({ element, isSelected, isInverted, onSelect, onDoubleT
         // Line height is roughly 1.2x font size.
         const maxFontSizeHeight = (X4_HEIGHT_PX - 40) / (totalLines * 1.2);
 
-        calculatedFontSize = Math.max(12, Math.min(300, maxFontSizeWidth, maxFontSizeHeight));
+        calculatedFontSize = Math.max(MIN_SIGN_FONT_SIZE, Math.min(300, maxFontSizeWidth, maxFontSizeHeight));
     }
 
     return (
@@ -700,7 +702,8 @@ function DraggableElement({ element, isSelected, isInverted, onSelect, onDoubleT
                                         textAlign: 'center',
                                         textAlignVertical: 'center', // Android
                                         fontSize: calculatedFontSize,
-                                        lineHeight: calculatedFontSize * 1.2
+                                        lineHeight: calculatedFontSize * 1.2,
+                                        fontWeight: '700',
                                     }
                                 ]}
                             >
@@ -708,7 +711,7 @@ function DraggableElement({ element, isSelected, isInverted, onSelect, onDoubleT
                             </Text>
                         </View>
                     ) : (
-                        <Text style={[styles.elementText, { color: isInverted ? '#fff' : '#000', fontSize: Math.max(12, 20 * contentScale) }]}>
+                        <Text style={[styles.elementText, { color: isInverted ? '#fff' : '#000', fontSize: Math.max(MIN_TEXT_FONT_SIZE, 20 * contentScale), fontWeight: '700' }]}>
                             {element.content || ' '}
                         </Text>
                     )

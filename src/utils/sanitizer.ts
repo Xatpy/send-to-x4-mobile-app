@@ -32,10 +32,10 @@ export function escapeXml(text: string): string {
  * Convert article HTML to EPUB-safe XHTML content.
  * Strips heavy/interactive markup and keeps a conservative set of tags.
  */
-export function htmlToXhtml(html: string): string {
+export function htmlToXhtml(html: string, options?: { preserveImages?: boolean }): string {
     if (!html) return '';
 
-    const sanitized = sanitizeHtmlForEpub(html);
+    const sanitized = sanitizeHtmlForEpub(html, options?.preserveImages);
 
     // List of void/self-closing elements in HTML that must be self-closed in XHTML
     const voidElements = [
@@ -57,15 +57,20 @@ export function htmlToXhtml(html: string): string {
     });
 }
 
-function sanitizeHtmlForEpub(html: string): string {
+function sanitizeHtmlForEpub(html: string, preserveImages?: boolean): string {
     const { document } = parseHTML(`<!doctype html><html><body>${html}</body></html>`);
     const root = document.body;
 
-    const removeSelectors = [
+    let removeSelectors = [
         'script', 'style', 'iframe', 'svg', 'math', 'video', 'audio', 'source',
         'object', 'embed', 'form', 'input', 'button', 'nav', 'header', 'footer',
-        'noscript', 'img', 'picture'
+        'noscript'
     ];
+
+    if (!preserveImages) {
+        removeSelectors.push('img', 'picture', 'figure', 'figcaption');
+    }
+
     removeSelectors.forEach(selector => {
         root.querySelectorAll(selector).forEach((node: any) => node.remove());
     });
@@ -73,8 +78,19 @@ function sanitizeHtmlForEpub(html: string): string {
     // Wikipedia/reference clutter and edit chrome
     root.querySelectorAll('.reference, .mw-editsection, .navbox, .metadata, .thumb, .infobox').forEach((node: any) => node.remove());
 
-    // Unwrap links to plain text to reduce parser/indexer load on constrained devices.
+    // Unwrap links (drop the anchor tag but keep its content).
+    // This preserves linked images like <a><img .../></a>.
     root.querySelectorAll('a').forEach((a: any) => {
+        const parent = a.parentNode;
+        if (!parent) return;
+        const children = Array.from(a.childNodes) as any[];
+        if (children.length > 0) {
+            for (const child of children) {
+                parent.insertBefore(child, a);
+            }
+            parent.removeChild(a);
+            return;
+        }
         const text = a.textContent || '';
         const replacement = document.createTextNode(text);
         a.replaceWith(replacement);
@@ -85,6 +101,13 @@ function sanitizeHtmlForEpub(html: string): string {
         'ul', 'ol', 'li', 'blockquote', 'pre', 'code',
         'strong', 'em', 'b', 'i', 'cite', 'abbr', 'span', 'br', 'hr'
     ]);
+
+    if (preserveImages) {
+        allowedTags.add('img');
+        // We intentionally don't add picture, figure, figcaption. 
+        // This causes the sanitizer to unwrap them, leaving behind just the standard <img> tag
+        // which complies perfectly with strict XHTML 1.1 EPUB 2 parsers.
+    }
 
     const sanitizeNode = (node: any) => {
         if (!node) return;
@@ -110,6 +133,13 @@ function sanitizeHtmlForEpub(html: string): string {
             // Keep markup minimal and XHTML-friendly.
             const attrs = Array.from(node.attributes || []) as any[];
             for (const attr of attrs) {
+                // Keep src and alt and dimensions for images
+                const isImageAttr = tag === 'img' && (
+                    attr.name === 'src' || attr.name === 'alt' || attr.name === 'width' || attr.name === 'height' || attr.name === 'style'
+                );
+                if (preserveImages && isImageAttr) {
+                    continue;
+                }
                 node.removeAttribute(attr.name);
             }
 
@@ -131,8 +161,11 @@ function sanitizeHtmlForEpub(html: string): string {
     }
 
     // Remove empty block elements after cleanup.
+    // Keep image-only wrappers when image preservation is enabled.
     root.querySelectorAll('p,div,li,blockquote').forEach((el: any) => {
-        if ((el.textContent || '').trim().length === 0) el.remove();
+        const hasText = ((el.textContent || '').trim().length > 0);
+        const hasImage = preserveImages && el.querySelector('img');
+        if (!hasText && !hasImage) el.remove();
     });
 
     return root.innerHTML;

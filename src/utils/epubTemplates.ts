@@ -1,5 +1,5 @@
 import { escapeXml, htmlToXhtml } from './sanitizer';
-import type { Article } from '../types';
+import type { Article, ArticleImage } from '../types';
 
 // Container XML - points to the OPF file
 export const CONTAINER_XML = `<?xml version="1.0" encoding="UTF-8"?>
@@ -17,7 +17,11 @@ export function generateContentOpf(params: {
   author: string;
   date: string;
   uuid: string;
+  images?: ArticleImage[];
 }): string {
+  const imageItems = (params.images || []).map(img =>
+    `<item id="${escapeXml(img.id)}" href="${escapeXml(img.filename)}" media-type="${escapeXml(normalizeManifestMediaType(img.mediaType))}"/>`
+  ).join('\n    ');
   return `<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="bookid" version="2.0">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
@@ -30,11 +34,19 @@ export function generateContentOpf(params: {
   <manifest>
     <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
     <item id="content" href="content.xhtml" media-type="application/xhtml+xml"/>
+    ${imageItems}
   </manifest>
   <spine toc="ncx">
     <itemref idref="content"/>
   </spine>
 </package>`;
+}
+
+function normalizeManifestMediaType(mediaType: string): string {
+  const normalized = (mediaType || '').split(';')[0].trim().toLowerCase();
+  if (normalized === 'image/jpg' || normalized === 'image/pjpeg') return 'image/jpeg';
+  if (normalized === 'image/svg') return 'image/svg+xml';
+  return normalized || 'image/jpeg';
 }
 
 /**
@@ -87,8 +99,9 @@ export function generateContentXhtml(article: Article): string {
     : '';
 
   // Convert HTML body to XHTML (properly close self-closing tags)
-  // Note: We do NOT strip images, matching the working Chrome extension behavior.
-  const xhtmlBody = htmlToXhtml(body);
+  // Note: We do NOT strip images if article.images is present.
+  const hasImages = article.images && article.images.length > 0;
+  const xhtmlBody = htmlToXhtml(body, { preserveImages: hasImages });
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
@@ -124,6 +137,12 @@ export function generateContentXhtml(article: Article): string {
       padding-left: 1em;
       border-left: 3px solid #ccc;
       font-style: italic;
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin: 1em auto;
     }
   </style>
 </head>

@@ -69,9 +69,10 @@ export function SettingsScreen() {
             articleFolder: localArticleFolder,
             noteFolder: localNoteFolder,
             useDateFolders: settings.useDateFolders,
+            includeImagesInArticles: settings.includeImagesInArticles,
         });
         setHasChanges(false);
-    }, [localFirmwareType, localStockIp, localCrossPointIp, localArticleFolder, localNoteFolder, settings.useDateFolders, saveSettings]);
+    }, [localFirmwareType, localStockIp, localCrossPointIp, localArticleFolder, localNoteFolder, settings.useDateFolders, settings.includeImagesInArticles, saveSettings]);
 
     const handleResetIp = () => {
         const defaultIp = getDefaultIp(localFirmwareType);

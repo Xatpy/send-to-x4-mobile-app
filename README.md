@@ -124,6 +124,25 @@ This project uses [Expo EAS](https://expo.dev/eas) for builds. Build-time identi
 
 ---
 
+## 🧪 EPUB Debug Utilities
+
+The app includes hidden EPUB debug/export tooling in:
+
+- `src/screens/ArticlesScreen.tsx`
+
+These utilities are kept in code but disabled in normal UI. Toggle these internal flags near the top of that file:
+
+- `EPUB_DEBUG_TOOLS_ENABLED`: shows the **EXTRACT EPUB (NO UPLOAD)** action in the Articles screen
+- `EPUB_DEBUG_PATH_LOG_ENABLED`: logs the exported EPUB path to the console
+- `EPUB_DEBUG_PATH_ALERT_ENABLED`: shows an alert with the exported EPUB path
+
+Notes:
+
+- This is intended for local debugging and EPUB validation outside the device renderer.
+- Keep all flags set to `false` for production-like behavior.
+
+---
+
 ## 🤝 Contributing
 
 Contributions are welcome! Whether it's bug reports, feature requests, or code contributions:

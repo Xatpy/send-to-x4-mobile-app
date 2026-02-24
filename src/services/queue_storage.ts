@@ -2,6 +2,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { QueuedArticle } from '../types';
 import { deleteCachedEpub, clearEpubCache } from './queue_prefetch';
 
+// Helper to safely decode URI components without crashing on invalid escapes (like "100%")
+function safeDecodeURIComponent(str: string): string {
+    try {
+        return decodeURIComponent(str);
+    } catch {
+        return str;
+    }
+}
+
 const STORAGE_KEY = '@send-to-x4/queue';
 
 // ── Mutex for serializing read-modify-write cycles ──────────────────
@@ -182,7 +191,7 @@ function extractDisplayTitle(url: string): string {
         // Try to get a readable path segment
         const pathParts = parsed.pathname.split('/').filter(Boolean);
         if (pathParts.length > 0) {
-            const lastPart = decodeURIComponent(pathParts[pathParts.length - 1]);
+            const lastPart = safeDecodeURIComponent(pathParts[pathParts.length - 1]);
             // Clean up common URL patterns
             const cleaned = lastPart
                 .replace(/[-_]/g, ' ')

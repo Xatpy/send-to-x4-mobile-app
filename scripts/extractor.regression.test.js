@@ -41,3 +41,18 @@ test('aggressive extractor skips nav text and escapes html-sensitive content', (
     assert.equal(article.body.includes('&lt;'), true);
     assert.equal(article.body.includes('&amp;'), true);
 });
+
+test('image mime helpers normalize content-type values for OPF compatibility', () => {
+    assert.equal(
+        __extractorTestUtils.normalizeImageMimeType('image/svg+xml; charset=utf-8'),
+        'image/svg+xml'
+    );
+    assert.equal(
+        __extractorTestUtils.normalizeImageMimeType('image/jpg'),
+        'image/jpeg'
+    );
+    assert.equal(
+        __extractorTestUtils.extensionFromImageMime('image/svg'),
+        'svg'
+    );
+});

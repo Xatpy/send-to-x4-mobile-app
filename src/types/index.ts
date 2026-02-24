@@ -1,3 +1,10 @@
+export interface ArticleImage {
+  id: string;
+  filename: string;
+  mediaType: string;
+  data: string; // base64 encoded string
+}
+
 // Article extracted from a URL
 export interface Article {
   title: string;
@@ -7,6 +14,7 @@ export interface Article {
   rawText: string;        // Plain text
   wordCount: number;
   sourceUrl: string;
+  images?: ArticleImage[]; // Optional array of downloaded images
 }
 
 // Result of article extraction
@@ -36,6 +44,7 @@ export interface Settings {
   articleFolder: string;
   noteFolder: string;
   useDateFolders: boolean;
+  includeImagesInArticles: boolean;
 }
 
 // Connection status

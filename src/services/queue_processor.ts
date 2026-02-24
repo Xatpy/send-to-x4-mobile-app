@@ -105,7 +105,7 @@ export async function processQueue(
                         cachedEpubFilename: undefined,
                     });
 
-                    const extraction = await extractArticle(item.url);
+                    const extraction = await extractArticle(item.url, { includeImages: settings.includeImagesInArticles });
                     if (!extraction.success || !extraction.article) {
                         throw new Error(extraction.error || 'Failed to extract article');
                     }
@@ -142,7 +142,7 @@ export async function processQueue(
                 }
             } else {
                 // No cache — fallback to extract + build + upload (legacy items)
-                const extraction = await extractArticle(item.url);
+                const extraction = await extractArticle(item.url, { includeImages: settings.includeImagesInArticles });
 
                 if (!extraction.success || !extraction.article) {
                     throw new Error(extraction.error || 'Failed to extract article');

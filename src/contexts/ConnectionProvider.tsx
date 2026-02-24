@@ -36,6 +36,7 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
         articleFolder: 'send-to-x4',
         noteFolder: 'notes',
         useDateFolders: false,
+        includeImagesInArticles: false,
     });
 
     const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({
@@ -48,14 +49,17 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
     // Use ref to avoid stale closures in the AppState listener
     const settingsRef = useRef(settings);
     settingsRef.current = settings;
+    const checkRequestRef = useRef(0);
 
     const checkConnection = useCallback(async () => {
+        const requestId = ++checkRequestRef.current;
         const s = settingsRef.current;
         setConnectionStatus(prev => ({ ...prev, checking: true, lastError: undefined }));
 
         const permission = await ensureNearbyWifiPermission();
         if (!permission.granted) {
             const ip = getCurrentIp(s);
+            if (requestId !== checkRequestRef.current) return;
             setConnectionStatus({
                 connected: false,
                 ip,
@@ -75,6 +79,7 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
             result = await checkStockConnection(ip);
         }
 
+        if (requestId !== checkRequestRef.current) return;
         setConnectionStatus({
             connected: result.success,
             ip,

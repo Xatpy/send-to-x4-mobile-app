@@ -30,6 +30,7 @@ export async function buildEpub(article: Article): Promise<EpubResult> {
         author: article.author,
         date: article.date,
         uuid,
+        images: article.images,
     }));
 
     // 4. OEBPS/toc.ncx (navigation)
@@ -40,6 +41,13 @@ export async function buildEpub(article: Article): Promise<EpubResult> {
 
     // 5. OEBPS/content.xhtml (the actual article content)
     zip.file('OEBPS/content.xhtml', generateContentXhtml(article));
+
+    // 6. Embed Images
+    if (article.images && article.images.length > 0) {
+        for (const img of article.images) {
+            zip.file(`OEBPS/${img.filename}`, img.data, { base64: true });
+        }
+    }
 
     // Generate EPUB (ZIP archive)
     const data = await zip.generateAsync({

@@ -1,13 +1,16 @@
 import { parseHTML } from 'linkedom';
 import { Readability } from '@mozilla/readability';
-import type { Article, ExtractionResult } from '../types';
+import * as FileSystem from 'expo-file-system/legacy';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import type { Article, ExtractionResult, ArticleImage } from '../types';
+import { generateUuid } from '../utils/sanitizer';
 
-const USER_AGENT = 'Mozilla/5.0 (compatible; Send-to-X4/1.0)';
+const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 /**
  * Extract article content from a URL
  */
-export async function extractArticle(url: string): Promise<ExtractionResult> {
+export async function extractArticle(url: string, options?: { includeImages?: boolean }): Promise<ExtractionResult> {
     if (__DEV__) console.log('[Extractor] Starting extraction for URL:', url);
 
     try {
@@ -137,6 +140,11 @@ export async function extractArticle(url: string): Promise<ExtractionResult> {
         }
 
         if (finalArticle) {
+            if (options?.includeImages) {
+                if (__DEV__) console.log('[Extractor] Processing images for article...');
+                finalArticle = await processArticleImages(finalArticle);
+            }
+
             if (__DEV__) console.log(`[Extractor] Success using method: ${usedMethod}`);
             return { success: true, article: finalArticle };
         }
@@ -159,6 +167,220 @@ export async function extractArticle(url: string): Promise<ExtractionResult> {
 
         return { success: false, error: message };
     }
+}
+
+/**
+ * Process HTML for images: download them, convert to base64, and modify img src.
+ */
+async function processArticleImages(article: Article): Promise<Article> {
+    try {
+        const { document } = parseHTML(`<!doctype html><html><body>${article.body}</body></html>`);
+        const root = document.body;
+        const imgTags = Array.from(root.querySelectorAll('img'));
+
+        if (imgTags.length === 0) return article;
+
+        const images: ArticleImage[] = [];
+
+        for (let i = 0; i < imgTags.length; i++) {
+            const img = imgTags[i] as any;
+            const src = pickPreferredImageSource(img);
+            if (!src) continue;
+            let tempUri: string | null = null;
+            let convertedUri: string | null = null;
+
+            try {
+                // resolve absolute URL
+                const absoluteUrl = new URL(src, article.sourceUrl).href;
+
+                // data uri support
+                if (absoluteUrl.startsWith('data:image/')) {
+                    const match = absoluteUrl.match(/^data:(image\/[^;,]+)(?:;[^,]*)?;base64,(.+)$/i);
+                    if (match) {
+                        const mimeType = normalizeImageMimeType(match[1]);
+                        const base64Data = match[2];
+                        const ext = extensionFromImageMime(mimeType);
+
+                        const filename = `image_${generateUuid()}.${ext}`;
+
+                        images.push({
+                            id: `img_${generateUuid()}`,
+                            filename,
+                            mediaType: mimeType === 'image/jpg' ? 'image/jpeg' : mimeType,
+                            data: base64Data
+                        });
+
+                        img.setAttribute('src', filename);
+                        img.removeAttribute('srcset');
+                        img.removeAttribute('loading');
+                    } else {
+                        img.remove();
+                    }
+                    continue;
+                }
+
+                if (__DEV__) console.log(`[Extractor] Fetching image: ${absoluteUrl}`);
+
+                // Resolve extension from URL or default
+                let ext = 'jpeg';
+                if (absoluteUrl.toLowerCase().includes('.png')) ext = 'png';
+                else if (absoluteUrl.toLowerCase().includes('.gif')) ext = 'gif';
+                else if (absoluteUrl.toLowerCase().includes('.svg')) ext = 'svg';
+                else if (absoluteUrl.toLowerCase().includes('.webp')) ext = 'webp';
+
+                if (!FileSystem.cacheDirectory) {
+                    img.remove();
+                    continue;
+                }
+                const tempFilename = `tmp_image_${generateUuid()}.${ext}`;
+                tempUri = `${FileSystem.cacheDirectory}${tempFilename}`;
+
+                // Use FileSystem to download natively
+                const downloadRes = await FileSystem.downloadAsync(absoluteUrl, tempUri, {
+                    headers: {
+                        'User-Agent': USER_AGENT,
+                        'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
+                    }
+                });
+
+                // Add a small delay to avoid 429 Too Many Requests from CDNs (e.g., Wikimedia)
+                await new Promise(resolve => setTimeout(resolve, 350));
+
+                if (downloadRes.status !== 200) {
+                    if (__DEV__) console.log('[Extractor] Failed to fetch image, status:', downloadRes.status);
+                    img.remove();
+                    continue;
+                }
+
+                const rawMimeType = downloadRes.headers['content-type'] || downloadRes.headers['Content-Type'] || `image/${ext}`;
+                let finalMimeType = normalizeImageMimeType(rawMimeType, ext);
+                let finalExt = extensionFromImageMime(finalMimeType);
+                let base64Data: string | null = null;
+
+                if (isDeviceFriendlyImageMime(finalMimeType)) {
+                    base64Data = await FileSystem.readAsStringAsync(tempUri, {
+                        encoding: FileSystem.EncodingType.Base64,
+                    });
+                } else {
+                    // Some EPUB readers on e-ink devices don't render WebP/AVIF reliably.
+                    // Transcode unsupported formats to JPEG for broad compatibility.
+                    const converted = await manipulateAsync(tempUri, [], {
+                        format: SaveFormat.JPEG,
+                        compress: 0.92,
+                        base64: true,
+                    });
+                    if (!converted.base64) {
+                        img.remove();
+                        continue;
+                    }
+                    convertedUri = converted.uri || null;
+                    base64Data = converted.base64;
+                    finalMimeType = 'image/jpeg';
+                    finalExt = 'jpg';
+                }
+
+                if (!base64Data) {
+                    img.remove();
+                    continue;
+                }
+
+                const filename = `image_${generateUuid()}.${finalExt}`;
+
+                images.push({
+                    id: `img_${generateUuid()}`,
+                    filename,
+                    mediaType: finalMimeType,
+                    data: base64Data
+                });
+
+                img.setAttribute('src', filename);
+                img.removeAttribute('srcset');
+                img.removeAttribute('loading');
+
+            } catch (err) {
+                console.warn('[Extractor] Failed to process image:', src, err instanceof Error ? err.message : '');
+                img.remove();
+            } finally {
+                if (tempUri) {
+                    await FileSystem.deleteAsync(tempUri, { idempotent: true }).catch(() => { });
+                }
+                if (convertedUri && convertedUri !== tempUri) {
+                    await FileSystem.deleteAsync(convertedUri, { idempotent: true }).catch(() => { });
+                }
+            }
+        }
+
+        article.body = root.innerHTML;
+        article.images = images;
+    } catch (err) {
+        console.warn('[Extractor] Image processing failed globally:', err);
+    }
+    return article;
+}
+
+function normalizeImageMimeType(rawMimeType: string, fallbackExt = 'jpeg'): string {
+    const cleaned = (rawMimeType || '').split(';')[0].trim().toLowerCase();
+
+    if (cleaned === 'image/jpg' || cleaned === 'image/pjpeg') return 'image/jpeg';
+    if (cleaned === 'image/svg') return 'image/svg+xml';
+    if (cleaned.startsWith('image/')) return cleaned;
+
+    return `image/${fallbackExt}`;
+}
+
+function extensionFromImageMime(mimeType: string): string {
+    const normalized = normalizeImageMimeType(mimeType);
+
+    switch (normalized) {
+        case 'image/jpeg':
+            return 'jpg';
+        case 'image/png':
+            return 'png';
+        case 'image/gif':
+            return 'gif';
+        case 'image/webp':
+            return 'webp';
+        case 'image/svg+xml':
+            return 'svg';
+        case 'image/bmp':
+            return 'bmp';
+        default:
+            return 'jpg';
+    }
+}
+
+function isDeviceFriendlyImageMime(mimeType: string): boolean {
+    const normalized = normalizeImageMimeType(mimeType);
+    return normalized === 'image/jpeg' || normalized === 'image/png' || normalized === 'image/gif';
+}
+
+function pickPreferredImageSource(img: any): string | null {
+    const preferredAttrs = ['data-src', 'data-original', 'data-lazy-src', 'data-url'];
+    for (const attr of preferredAttrs) {
+        const value = (img.getAttribute(attr) || '').trim();
+        if (value) return value;
+    }
+
+    const srcsetCandidates = [
+        parseSrcset(img.getAttribute('data-srcset')),
+        parseSrcset(img.getAttribute('srcset')),
+    ].filter(Boolean) as string[];
+    if (srcsetCandidates.length > 0) {
+        return srcsetCandidates[0];
+    }
+
+    const src = (img.getAttribute('src') || '').trim();
+    return src || null;
+}
+
+function parseSrcset(srcset: string | null): string | null {
+    if (!srcset) return null;
+    const candidates = srcset
+        .split(',')
+        .map(part => part.trim().split(/\s+/)[0])
+        .filter(Boolean);
+    if (candidates.length === 0) return null;
+    return candidates[candidates.length - 1];
 }
 
 /**
@@ -574,4 +796,8 @@ export const __extractorTestUtils = {
     assessAggressiveCandidate,
     extractAggressive,
     escapeHtml,
+    normalizeImageMimeType,
+    extensionFromImageMime,
+    pickPreferredImageSource,
+    parseSrcset,
 };

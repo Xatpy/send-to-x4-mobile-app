@@ -16,6 +16,15 @@ function parseDateFromFilename(filename: string): number {
     }
 }
 
+// Helper to safely decode URI components without crashing on invalid escapes (like "100%")
+function safeDecodeURIComponent(str: string): string {
+    try {
+        return decodeURIComponent(str);
+    } catch {
+        return str;
+    }
+}
+
 
 
 const DEFAULT_TARGET_FOLDER = 'send-to-x4';
@@ -262,10 +271,10 @@ export async function listStockFiles(ip: string, targetFolder: string = DEFAULT_
         return items
             .filter((item: any) => item.type === 'file' && (item.name.endsWith('.epub') || item.name.endsWith('.txt')))
             .map((item: any) => ({
-                name: decodeURIComponent(item.name),
+                name: safeDecodeURIComponent(item.name),
                 rawName: item.name,
                 size: item.size,
-                timestamp: parseDateFromFilename(decodeURIComponent(item.name)),
+                timestamp: parseDateFromFilename(safeDecodeURIComponent(item.name)),
             }))
             .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)); // Newest first
 

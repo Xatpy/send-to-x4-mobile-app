@@ -8,6 +8,7 @@ const DEFAULTS: Settings = {
     articleFolder: 'send-to-x4',
     noteFolder: 'notes',
     useDateFolders: false,
+    includeImagesInArticles: false,
 };
 
 const STORAGE_KEY = '@send-to-x4/settings';

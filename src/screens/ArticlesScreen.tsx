@@ -17,9 +17,12 @@ import {
     Alert,
     AppState as RNAppState,
     TouchableOpacity,
+    Switch,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
+import * as Sharing from 'expo-sharing';
+import { cacheDirectory, writeAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 
@@ -42,6 +45,12 @@ import { prefetchArticle } from '../services/queue_prefetch';
 
 import { processQueue } from '../services/queue_processor';
 
+// Internal debug utilities for EPUB troubleshooting.
+// Keep disabled in normal UI; enable temporarily when needed.
+const EPUB_DEBUG_TOOLS_ENABLED = false;
+const EPUB_DEBUG_PATH_ALERT_ENABLED = false;
+const EPUB_DEBUG_PATH_LOG_ENABLED = false;
+
 interface ArticlesScreenProps {
     /** Pre-filled URL from share intent */
     sharedUrl?: string | null;
@@ -49,7 +58,7 @@ interface ArticlesScreenProps {
 }
 
 export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScreenProps) {
-    const { settings, connectionStatus } = useConnection();
+    const { settings, connectionStatus, saveSettings } = useConnection();
 
     // Local state
     const [url, setUrl] = useState('');
@@ -57,7 +66,9 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
     const [appState, setAppState] = useState<AppState>('idle');
     const [errorMessage, setErrorMessage] = useState<string | undefined>();
     const [sendLoading, setSendLoading] = useState(false);
+    const [extractOnlyLoading, setExtractOnlyLoading] = useState(false);
     const [extractionUrl, setExtractionUrl] = useState<string | null>(null);
+    const [pendingExtractionAction, setPendingExtractionAction] = useState<'send' | 'extract' | null>(null);
     const navigation = useNavigation<any>();
 
     // Queue state
@@ -144,7 +155,7 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
         setQueueLoading(true);
         try {
             // Pre-fetch: extract + build EPUB now while we have internet
-            const prefetch = await prefetchArticle(targetUrl);
+            const prefetch = await prefetchArticle(targetUrl, { includeImages: settings.includeImagesInArticles });
 
             if (prefetch.success && prefetch.path && prefetch.filename) {
                 await addToQueue(targetUrl, prefetch.title, false, prefetch.path, prefetch.filename);
@@ -170,28 +181,48 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
     };
 
     const handlePickEpub = async () => {
+        setQueueLoading(true);
         try {
             const result = await DocumentPicker.getDocumentAsync({
                 type: ['application/epub+zip', 'application/x-epub'],
                 copyToCacheDirectory: true, // Ensure we have access
+                multiple: true,
             });
 
             if (result.canceled || !result.assets || result.assets.length === 0) return;
 
-            const file = result.assets[0];
-            await addToQueue(file.uri, file.name || 'Imported EPUB', true);
+            let added = 0;
+            let failed = 0;
+            for (const file of result.assets) {
+                try {
+                    await addToQueue(file.uri, file.name || 'Imported EPUB', true);
+                    added++;
+                } catch (error) {
+                    failed++;
+                    console.warn('Failed to queue local EPUB:', file?.name, error);
+                }
+            }
+
             await loadQueue();
-            Alert.alert('Added to Queue ✓', `"${file.name || 'File'}" saved for later sending.`);
+            if (added > 0 && failed === 0) {
+                Alert.alert('Added to Queue ✓', `${added} EPUB file${added === 1 ? '' : 's'} saved for later sending.`);
+            } else if (added > 0) {
+                Alert.alert('Partially Added', `${added} added, ${failed} failed.`);
+            } else {
+                Alert.alert('Error', 'Failed to add selected EPUB files.');
+            }
         } catch (error) {
             console.warn('Pick epub error:', error);
             Alert.alert('Error', 'Failed to pick EPUB file.');
+        } finally {
+            setQueueLoading(false);
         }
     };
 
     const handleAddToQueueFromShare = async (sharedUrlValue: string) => {
         setQueueLoading(true);
         try {
-            const prefetch = await prefetchArticle(sharedUrlValue);
+            const prefetch = await prefetchArticle(sharedUrlValue, { includeImages: settings.includeImagesInArticles });
 
             if (prefetch.success && prefetch.path && prefetch.filename) {
                 await addToQueue(sharedUrlValue, prefetch.title, false, prefetch.path, prefetch.filename);
@@ -292,6 +323,7 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
         setSendLoading(true);
         setAppState('processing');
         setErrorMessage(undefined);
+        setPendingExtractionAction('send');
 
         const targetUrl = url.trim();
         const hostname = new URL(targetUrl).hostname;
@@ -301,8 +333,38 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
         }
 
         try {
-            const extraction = await extractArticle(targetUrl);
+            const extraction = await extractArticle(targetUrl, { includeImages: settings.includeImagesInArticles });
             await processExtractionResult(extraction);
+        } catch (error) {
+            handleError(error);
+        }
+    };
+
+    const handleExtractEpubOnly = async () => {
+        if (!url.trim()) {
+            Alert.alert('Error', 'Please enter a URL');
+            return;
+        }
+        if (!isValidUrl(url.trim())) {
+            Alert.alert('Error', 'Please enter a valid URL');
+            return;
+        }
+
+        setExtractOnlyLoading(true);
+        setAppState('processing');
+        setErrorMessage(undefined);
+        setPendingExtractionAction('extract');
+
+        const targetUrl = url.trim();
+        const hostname = new URL(targetUrl).hostname;
+        if (hostname.includes('twitter.com') || hostname.includes('x.com')) {
+            setExtractionUrl(targetUrl);
+            return;
+        }
+
+        try {
+            const extraction = await extractArticle(targetUrl, { includeImages: settings.includeImagesInArticles });
+            await processExtractionToLocal(extraction);
         } catch (error) {
             handleError(error);
         }
@@ -314,6 +376,8 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
         setErrorMessage(message);
         Alert.alert('Error', message);
         setSendLoading(false);
+        setExtractOnlyLoading(false);
+        setPendingExtractionAction(null);
         setExtractionUrl(null);
     };
 
@@ -351,14 +415,67 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
         } finally {
             if (!extractionUrl) {
                 setSendLoading(false);
+                setPendingExtractionAction(null);
+            }
+        }
+    };
+
+    const processExtractionToLocal = async (extraction: ExtractionResult) => {
+        try {
+            if (!extraction.success || !extraction.article) {
+                throw new Error(extraction.error || 'Failed to extract article');
+            }
+
+            const epub = await buildEpub(extraction.article);
+            const safeFilename = epub.filename.toLowerCase().endsWith('.epub') ? epub.filename : `${epub.filename}.epub`;
+            if (!cacheDirectory) {
+                throw new Error('Cache directory unavailable');
+            }
+            const path = `${cacheDirectory}${Date.now()}-${safeFilename}`;
+
+            const base64 = uint8ArrayToBase64(epub.data);
+            await writeAsStringAsync(path, base64, { encoding: EncodingType.Base64 });
+            if (EPUB_DEBUG_PATH_LOG_ENABLED) {
+                console.log(`[EPUB DEBUG] Exported EPUB path: ${path}`);
+            }
+            if (EPUB_DEBUG_PATH_ALERT_ENABLED) {
+                Alert.alert('EPUB Debug Path', path);
+            }
+
+            const shareSupported = await Sharing.isAvailableAsync();
+            if (shareSupported) {
+                await Sharing.shareAsync(path, {
+                    mimeType: 'application/epub+zip',
+                    dialogTitle: 'Save or Share EPUB',
+                    UTI: 'org.idpf.epub-container',
+                });
+            } else {
+                Alert.alert('EPUB Created', `Saved to cache:\n${path}`);
+            }
+
+            setAppState('success');
+            Alert.alert('EPUB Ready', `"${safeFilename}" created for testing.`);
+        } catch (error) {
+            handleError(error);
+        } finally {
+            if (!extractionUrl) {
+                setExtractOnlyLoading(false);
+                setPendingExtractionAction(null);
             }
         }
     };
 
     const handleExtractionComplete = async (result: ExtractionResult) => {
         setExtractionUrl(null);
-        await processExtractionResult(result);
-        setSendLoading(false);
+        const action = pendingExtractionAction || 'send';
+        if (action === 'extract') {
+            await processExtractionToLocal(result);
+            setExtractOnlyLoading(false);
+        } else {
+            await processExtractionResult(result);
+            setSendLoading(false);
+        }
+        setPendingExtractionAction(null);
     };
 
     const pendingCount = queue.filter(
@@ -423,7 +540,7 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
                                 onChange={setUrl}
                                 clipboardUrl={clipboardUrl}
                                 onUseClipboard={handleUseClipboard}
-                                disabled={sendLoading || dumpLoading}
+                                disabled={sendLoading || dumpLoading || (EPUB_DEBUG_TOOLS_ENABLED && extractOnlyLoading)}
                             />
 
                             <View style={styles.buttonRow}>
@@ -433,7 +550,7 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
                                         icon="◉"
                                         onPress={handleSendToX4}
                                         loading={sendLoading}
-                                        disabled={!url.trim() || dumpLoading}
+                                        disabled={!url.trim() || dumpLoading || (EPUB_DEBUG_TOOLS_ENABLED && extractOnlyLoading)}
                                         variant="primary"
                                     />
                                 </View>
@@ -443,11 +560,38 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
                                         icon="＋"
                                         onPress={handleAddToQueue}
                                         loading={queueLoading}
-                                        disabled={!url.trim() || sendLoading || dumpLoading || queueLoading}
+                                        disabled={!url.trim() || sendLoading || dumpLoading || queueLoading || (EPUB_DEBUG_TOOLS_ENABLED && extractOnlyLoading)}
                                         variant="secondary"
                                     />
                                 </View>
                             </View>
+                            <View style={styles.imagesToggleRow}>
+                                <View style={styles.imagesToggleTextWrap}>
+                                    <Text style={styles.imagesToggleLabel}>Include images in article</Text>
+                                    <Text style={styles.imagesToggleHelp}>May be slower, but preserves visuals</Text>
+                                </View>
+                                <Switch
+                                    value={settings.includeImagesInArticles}
+                                    onValueChange={async (value) => {
+                                        await saveSettings({ ...settings, includeImagesInArticles: value });
+                                    }}
+                                    trackColor={{ false: '#333', true: '#6c63ff' }}
+                                    thumbColor={settings.includeImagesInArticles ? '#fff' : '#888'}
+                                    disabled={sendLoading || dumpLoading || queueLoading}
+                                />
+                            </View>
+                            {EPUB_DEBUG_TOOLS_ENABLED && (
+                                <View style={styles.extractButtonRow}>
+                                    <ActionButton
+                                        title={extractOnlyLoading ? 'EXTRACTING EPUB...' : 'EXTRACT EPUB (NO UPLOAD)'}
+                                        icon="⬇"
+                                        onPress={handleExtractEpubOnly}
+                                        loading={extractOnlyLoading}
+                                        disabled={!url.trim() || sendLoading || dumpLoading || queueLoading || extractOnlyLoading}
+                                        variant="secondary"
+                                    />
+                                </View>
+                            )}
                         </>
                     ) : (
                         <View style={styles.fileSection}>
@@ -458,8 +602,8 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
                                 title="PICK EPUB FILE"
                                 icon="📂"
                                 onPress={handlePickEpub}
-                                loading={false}
-                                disabled={sendLoading || dumpLoading}
+                                loading={queueLoading}
+                                disabled={sendLoading || dumpLoading || queueLoading}
                                 variant="secondary"
                             />
                         </View>
@@ -595,6 +739,30 @@ const styles = StyleSheet.create({
     buttonHalf: {
         flex: 1,
     },
+    extractButtonRow: {
+        marginTop: 12,
+    },
+    imagesToggleRow: {
+        marginTop: 12,
+        paddingHorizontal: 4,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    imagesToggleTextWrap: {
+        flex: 1,
+        marginRight: 12,
+    },
+    imagesToggleLabel: {
+        color: '#fff',
+        fontSize: 14,
+        fontWeight: '600',
+    },
+    imagesToggleHelp: {
+        color: 'rgba(255,255,255,0.55)',
+        fontSize: 12,
+        marginTop: 2,
+    },
     errorContainer: {
         marginTop: 16,
         padding: 12,
@@ -634,3 +802,11 @@ const styles = StyleSheet.create({
         marginTop: 16,
     },
 });
+
+function uint8ArrayToBase64(data: Uint8Array): string {
+    let binary = '';
+    for (let i = 0; i < data.length; i++) {
+        binary += String.fromCharCode(data[i]);
+    }
+    return btoa(binary);
+}

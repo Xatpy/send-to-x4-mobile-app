@@ -1,7 +1,7 @@
 /**
  * ConnectionBanner — persistent slim bar showing X4 connection state.
  *
- * Visible on all tabs. Tap to retry when disconnected.
+ * Visible on all tabs. Tap status area anytime to re-check connection.
  */
 
 import React from 'react';
@@ -19,8 +19,14 @@ export function ConnectionBanner() {
                 <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={styles.settingsIcon}>
                     <Text style={{ fontSize: 20 }}>⚙️</Text>
                 </TouchableOpacity>
-                <ActivityIndicator size="small" color="#a0a0b0" style={{ marginLeft: 8 }} />
-                <Text style={styles.checkingText}>Checking connection…</Text>
+                <TouchableOpacity
+                    style={styles.contentWrap}
+                    onPress={checkConnection}
+                    activeOpacity={0.7}
+                >
+                    <ActivityIndicator size="small" color="#a0a0b0" style={{ marginRight: 8 }} />
+                    <Text style={styles.checkingText}>Checking connection…</Text>
+                </TouchableOpacity>
             </View>
         );
     }
@@ -31,12 +37,17 @@ export function ConnectionBanner() {
                 <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={styles.settingsIcon}>
                     <Text style={{ fontSize: 20 }}>⚙️</Text>
                 </TouchableOpacity>
-                <View style={styles.contentWrap}>
+                <TouchableOpacity
+                    style={styles.contentWrap}
+                    onPress={checkConnection}
+                    activeOpacity={0.7}
+                >
                     <View style={styles.dotConnected} />
                     <Text style={styles.connectedText}>
                         Connected to X4 ({connectionStatus.ip})
                     </Text>
-                </View>
+                    <Text style={styles.connectedHint}>Tap to refresh</Text>
+                </TouchableOpacity>
             </View>
         );
     }
@@ -114,7 +125,11 @@ const styles = StyleSheet.create({
     checkingText: {
         color: '#a0a0b0',
         fontSize: 12,
-        marginLeft: 8,
+        flex: 1,
+    },
+    connectedHint: {
+        color: 'rgba(134, 239, 172, 0.7)',
+        fontSize: 11,
     },
     retryHint: {
         color: 'rgba(252, 165, 165, 0.6)',
