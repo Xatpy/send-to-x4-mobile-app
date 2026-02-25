@@ -8,14 +8,15 @@ import { generateAndSaveThumbnail } from '../services/thumbnail_generator';
 
 export async function processAndSendSleepScreen(
     viewShotUri: string,
-    settings: Settings
+    settings: Settings,
+    customFilename?: string
 ): Promise<{ success: boolean; error?: string }> {
     try {
         const ip = getCurrentIp(settings);
 
         // Convert the React Native snapshot to 480x800 BMP
         // We know the source View is already at the correct aspect ratio, so we don't need to specify sizes
-        const { data, filename } = await convertImageToScreensaverBmp(viewShotUri);
+        const { data, filename } = await convertImageToScreensaverBmp(viewShotUri, null, null, customFilename);
 
         let uploadResult;
 
@@ -39,9 +40,10 @@ export async function processAndSendSleepScreen(
 }
 
 export async function processAndSaveSleepScreenLocally(
-    viewShotUri: string
+    viewShotUri: string,
+    customFilename?: string
 ): Promise<string> {
-    const { data, filename } = await convertImageToScreensaverBmp(viewShotUri);
+    const { data, filename } = await convertImageToScreensaverBmp(viewShotUri, null, null, customFilename);
     const fileUri = `${FileSystem.cacheDirectory}${filename}`;
 
     const b64 = uint8ArrayToBase64(data);

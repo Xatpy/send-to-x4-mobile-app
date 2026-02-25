@@ -13,7 +13,8 @@ import {
     Modal,
     KeyboardAvoidingView,
     Platform,
-    SafeAreaView
+    SafeAreaView,
+    Switch
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import ViewShot from 'react-native-view-shot';
@@ -51,6 +52,8 @@ export function SleepScreenTab() {
     const [isDrawingMode, setIsDrawingMode] = useState(false);
     const [doodlePaths, setDoodlePaths] = useState<string[]>([]);
     const [currentPath, setCurrentPath] = useState<string>('');
+    const [overwriteMain, setOverwriteMain] = useState(false);
+    const [showInfoModal, setShowInfoModal] = useState(false);
 
     // Keep context mutable for the PanResponder closure
     const drawingContext = useRef({
@@ -232,7 +235,7 @@ export function SleepScreenTab() {
             const uri = await captureCanvas();
             if (!uri) throw new Error('Could not capture screen');
 
-            const result = await processAndSendSleepScreen(uri, settings);
+            const result = await processAndSendSleepScreen(uri, settings, overwriteMain ? 'main-todo.bmp' : undefined);
             if (result.success) {
                 setSuccessMessage('Sent! Open it on X4 and set as Sleep Screen.');
             } else {
@@ -376,6 +379,25 @@ export function SleepScreenTab() {
 
             {/* (Inline Toolbar Removed - Controls are now directly on the selected canvas element) */}
 
+            {/* Options & Actions */}
+            <View style={styles.optionsContainer}>
+                <View style={styles.switchRow}>
+                    <TouchableOpacity onPress={() => setShowInfoModal(true)} style={styles.infoIconWrapper}>
+                        <Text style={styles.infoIconText}>?</Text>
+                    </TouchableOpacity>
+                    <View style={styles.switchLabelWrap}>
+                        <Text style={styles.switchLabel}>Overwrite Default Sleep Screen</Text>
+                        <Text style={styles.switchHelp}>Always overwrites the same file on the device</Text>
+                    </View>
+                    <Switch
+                        value={overwriteMain}
+                        onValueChange={setOverwriteMain}
+                        trackColor={{ false: '#333', true: '#6c63ff' }}
+                        thumbColor={overwriteMain ? '#fff' : '#888'}
+                    />
+                </View>
+            </View>
+
             {/* Fixed Bottom Actions (Side by Side) */}
             <View style={styles.bottomActions}>
                 <View style={styles.actionButtonHost}>
@@ -420,6 +442,24 @@ export function SleepScreenTab() {
                         </View>
                     )}
                 </KeyboardAvoidingView>
+            </Modal>
+
+            {/* Info Modal */}
+            <Modal visible={showInfoModal} animationType="fade" transparent onRequestClose={() => setShowInfoModal(false)}>
+                <View style={styles.infoModalOverlay}>
+                    <View style={styles.infoModalContent}>
+                        <Text style={styles.infoModalTitle}>Overwrite Default Sleep Screen</Text>
+                        <Text style={styles.infoModalText}>
+                            When enabled, your design is always sent to the X4 device as a single file named "main-todo.bmp".
+                        </Text>
+                        <Text style={styles.infoModalText}>
+                            This means each time you click SEND TO X4, it replaces the previous file on the device instead of creating a new screensaver image. Your lock screen will always show your most recent to-do list without cluttering the /sleep folder!
+                        </Text>
+                        <TouchableOpacity style={styles.infoModalCloseBtn} onPress={() => setShowInfoModal(false)}>
+                            <Text style={styles.infoModalCloseText}>Got it</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
             </Modal>
         </SafeAreaView>
     );
@@ -905,6 +945,83 @@ const styles = StyleSheet.create({
     modalDoneText: {
         color: '#000',
         fontWeight: '700',
+        fontSize: 16,
+    },
+    optionsContainer: {
+        backgroundColor: '#1a1a2e',
+        paddingTop: 12,
+    },
+    switchRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 20,
+        paddingBottom: 8,
+    },
+    switchLabelWrap: {
+        flex: 1,
+        marginRight: 12,
+    },
+    switchLabel: {
+        color: '#fff',
+        fontSize: 15,
+        fontWeight: '500',
+    },
+    switchHelp: {
+        color: '#888',
+        fontSize: 12,
+        marginTop: 2,
+    },
+    infoIconWrapper: {
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    infoIconText: {
+        color: '#a0a0b0',
+        fontSize: 14,
+        fontWeight: 'bold',
+    },
+    infoModalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
+    },
+    infoModalContent: {
+        backgroundColor: '#2d2d44',
+        borderRadius: 16,
+        padding: 24,
+        width: '100%',
+        maxWidth: 400,
+    },
+    infoModalTitle: {
+        color: '#fff',
+        fontSize: 18,
+        fontWeight: 'bold',
+        marginBottom: 16,
+    },
+    infoModalText: {
+        color: '#ccc',
+        fontSize: 14,
+        lineHeight: 22,
+        marginBottom: 16,
+    },
+    infoModalCloseBtn: {
+        backgroundColor: '#6c63ff',
+        paddingVertical: 12,
+        borderRadius: 8,
+        alignItems: 'center',
+        marginTop: 8,
+    },
+    infoModalCloseText: {
+        color: '#fff',
+        fontWeight: 'bold',
         fontSize: 16,
     },
 });

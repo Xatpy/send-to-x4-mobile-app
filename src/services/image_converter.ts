@@ -26,6 +26,7 @@ export async function convertImageToScreensaverBmp(
     uri: string,
     sourceWidth?: number | null,
     sourceHeight?: number | null,
+    customFilename?: string,
 ): Promise<{ data: Uint8Array; filename: string }> {
 
     // --- Step 1: Resize + cover-crop to 480×800 ---
@@ -57,8 +58,8 @@ export async function convertImageToScreensaverBmp(
     // --- Step 4: Encode RGBA to BMP ---
     const bmpData = encodeRGBAToBMP(rgba);
 
-    // Generate filename: screensaver_<timestamp>.bmp
-    const filename = `screensaver_${Date.now()}.bmp`;
+    // Generate filename: custom, or screensaver_<timestamp>.bmp
+    const filename = customFilename || `screensaver_${Date.now()}.bmp`;
 
     return { data: bmpData, filename };
 }

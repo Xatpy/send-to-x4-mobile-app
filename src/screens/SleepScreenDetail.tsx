@@ -249,7 +249,7 @@ export function SleepScreenDetail({ navigation, route }: any) {
                 </View>
 
                 <Text style={styles.attributionText}>
-                    Powered by {isRandom ? 'readme.club/dev' : 'x4epapers.lowio.xyz'}
+                    Powered by {isRandom ? 'readme.club' : 'x4epapers.lowio.xyz'}
                 </Text>
             </View>
         </View>

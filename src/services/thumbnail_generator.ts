@@ -32,7 +32,9 @@ export async function generateAndSaveThumbnail(sourceUri: string, targetFilename
         });
 
         // Save the mapping to our existing dictionary
-        await savePreviewMapping(targetFilename, finalUri);
+        // Append a cache-busting param so React Native's Image component
+        // doesn't show a stale cached version when the same filename is overwritten
+        await savePreviewMapping(targetFilename, `${finalUri}?t=${Date.now()}`);
 
         console.log(`[Thumbnail] Cached ${targetFilename} -> ${finalUri}`);
     } catch (e) {
