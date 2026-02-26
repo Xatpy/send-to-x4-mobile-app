@@ -38,7 +38,7 @@ function TabIcon({ label, focused }: { label: string; focused: boolean }) {
   );
 }
 
-function MainTabs({ sharedUrl, setSharedUrl, sharedImage, setSharedImage }: any) {
+function MainTabs({ sharedUrl, setSharedUrl, sharedText, setSharedText, sharedImage, setSharedImage }: any) {
   const { connectionStatus } = useConnection();
 
   return (
@@ -77,11 +77,17 @@ function MainTabs({ sharedUrl, setSharedUrl, sharedImage, setSharedImage }: any)
 
         <Tab.Screen
           name="Notes"
-          component={NotesScreen}
           options={{
             tabBarIcon: ({ focused }) => <TabIcon label="📝" focused={focused} />,
           }}
-        />
+        >
+          {() => (
+            <NotesScreen
+              sharedText={sharedText}
+              onSharedTextConsumed={() => setSharedText(null)}
+            />
+          )}
+        </Tab.Screen>
 
         <Tab.Screen
           name="Images"
@@ -145,6 +151,7 @@ function AppContent() {
 
   // Share intent state — passed to the appropriate tab
   const [sharedUrl, setSharedUrl] = useState<string | null>(null);
+  const [sharedText, setSharedText] = useState<string | null>(null);
   const [sharedImage, setSharedImage] = useState<{
     uri: string;
     filename: string;
@@ -191,6 +198,13 @@ function AppContent() {
         setTimeout(() => {
           navigationRef.current?.navigate('MainTabs', { screen: 'Articles' });
         }, 100);
+      } else if (sharedValue && sharedValue.trim().length > 0) {
+        // Non-URL text (e.g. shared from iOS Notes) → route to Notes tab
+        setSharedText(sharedValue);
+
+        setTimeout(() => {
+          navigationRef.current?.navigate('MainTabs', { screen: 'Notes' });
+        }, 100);
       }
 
       resetShareIntent();
@@ -207,6 +221,8 @@ function AppContent() {
                 {...props}
                 sharedUrl={sharedUrl}
                 setSharedUrl={setSharedUrl}
+                sharedText={sharedText}
+                setSharedText={setSharedText}
                 sharedImage={sharedImage}
                 setSharedImage={setSharedImage}
               />

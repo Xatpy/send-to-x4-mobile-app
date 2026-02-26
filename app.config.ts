@@ -76,6 +76,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
                 "expo-share-intent",
                 {
                     iosActivationRules: {
+                        NSExtensionActivationSupportsText: true,
                         NSExtensionActivationSupportsWebURLWithMaxCount: 1,
                         NSExtensionActivationSupportsWebPageWithMaxCount: 1,
                         NSExtensionActivationSupportsImageWithMaxCount: 1,

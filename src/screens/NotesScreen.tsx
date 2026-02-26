@@ -32,6 +32,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useConnection } from '../contexts/ConnectionProvider';
 import { ActionButton } from '../components/ActionButton';
 import { sendNoteAsTxt } from '../services/note_sender';
+import { sendNoteAsEpub } from '../services/note_epub_sender';
 
 const DRAFT_KEY = '@send-to-x4/note-draft';
 const DRAFT_TITLE_KEY = '@send-to-x4/note-draft-title';
@@ -40,13 +41,19 @@ const SCROLLBAR_WIDTH = 6;
 const SCROLLBAR_MIN_HEIGHT = 40;
 const SCROLLBAR_FADE_DELAY = 1500;
 
-export function NotesScreen() {
+interface NotesScreenProps {
+    sharedText?: string | null;
+    onSharedTextConsumed?: () => void;
+}
+
+export function NotesScreen({ sharedText, onSharedTextConsumed }: NotesScreenProps) {
     const { settings, connectionStatus } = useConnection();
     const navigation = useNavigation<any>();
 
     const [title, setTitle] = useState('');
     const [text, setText] = useState('');
     const [sending, setSending] = useState(false);
+    const [sendingEpub, setSendingEpub] = useState(false);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
     const inputRef = useRef<TextInput>(null);
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -98,7 +105,19 @@ export function NotesScreen() {
         viewportHeight.current = e.nativeEvent.layout.height;
     }, []);
 
-    // ── Restore draft on mount ──────────────────────────────────────
+    // ── Coordinate shared text vs draft restore ─────────────────────
+    const hasSharedText = useRef(false);
+
+    // ── Handle shared text from external apps ────────────────────────
+    useEffect(() => {
+        if (sharedText) {
+            hasSharedText.current = true;
+            setText(sharedText);
+            onSharedTextConsumed?.();
+        }
+    }, [sharedText]);
+
+    // ── Restore draft on mount (skip if shared text wins) ────────────
     useEffect(() => {
         (async () => {
             try {
@@ -106,14 +125,18 @@ export function NotesScreen() {
                     AsyncStorage.getItem(DRAFT_KEY),
                     AsyncStorage.getItem(DRAFT_TITLE_KEY),
                 ]);
+                // Check ref AFTER await — shared text may have arrived mid-flight
+                if (hasSharedText.current) return;
                 if (draftTitle) setTitle(draftTitle);
                 if (draft) setText(draft);
             } catch (e) {
                 console.warn('[NotesScreen] Failed to restore draft:', e);
             }
         })();
+    }, []);
 
-        // Cleanup timers on unmount
+    // Cleanup timers on unmount
+    useEffect(() => {
         return () => {
             if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
             if (saveTitleTimerRef.current) clearTimeout(saveTitleTimerRef.current);
@@ -196,6 +219,38 @@ export function NotesScreen() {
             Alert.alert('Send Failed', message);
         } finally {
             setSending(false);
+        }
+    }, [text, title, settings, connectionStatus.connected]);
+
+    // ── Send as EPUB ────────────────────────────────────────────────
+    const handleSendAsEpub = useCallback(async () => {
+        const trimmed = text.trim();
+        if (!trimmed) {
+            Alert.alert('Empty Note', 'Write or paste some text first.');
+            return;
+        }
+        if (!connectionStatus.connected) {
+            Alert.alert('Not Connected', 'Please connect to the X4 WiFi hotspot first.');
+            return;
+        }
+
+        Keyboard.dismiss();
+        setSendingEpub(true);
+        setSuccessMessage(null);
+
+        try {
+            const result = await sendNoteAsEpub(text, settings, title);
+
+            if (!result.success) {
+                throw new Error(result.error || 'Upload failed');
+            }
+
+            setSuccessMessage('Sent as EPUB! ✓');
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Unknown error';
+            Alert.alert('Send Failed', message);
+        } finally {
+            setSendingEpub(false);
         }
     }, [text, title, settings, connectionStatus.connected]);
 
@@ -287,16 +342,30 @@ export function NotesScreen() {
                         </View>
                     )}
 
-                    {/* Send button */}
+                    {/* Send buttons */}
                     <View style={styles.sendContainer}>
-                        <ActionButton
-                            title="SEND TO DEVICE"
-                            icon="◉"
-                            onPress={handleSend}
-                            loading={sending}
-                            disabled={!text.trim() || sending}
-                            variant="primary"
-                        />
+                        <View style={styles.sendRow}>
+                            <View style={styles.sendHalf}>
+                                <ActionButton
+                                    title="SEND AS TXT"
+                                    icon="◉"
+                                    onPress={handleSend}
+                                    loading={sending}
+                                    disabled={!text.trim() || sending || sendingEpub}
+                                    variant="primary"
+                                />
+                            </View>
+                            <View style={styles.sendHalf}>
+                                <ActionButton
+                                    title="SEND AS EPUB"
+                                    icon="📖"
+                                    onPress={handleSendAsEpub}
+                                    loading={sendingEpub}
+                                    disabled={!text.trim() || sending || sendingEpub}
+                                    variant="secondary"
+                                />
+                            </View>
+                        </View>
                     </View>
                 </ScrollView>
 
@@ -415,6 +484,13 @@ const styles = StyleSheet.create({
     },
     sendContainer: {
         marginTop: 20,
+    },
+    sendRow: {
+        flexDirection: 'row',
+        gap: 12,
+    },
+    sendHalf: {
+        flex: 1,
     },
     scrollThumb: {
         position: 'absolute',
