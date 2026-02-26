@@ -10,11 +10,12 @@ import type { QueuedArticle } from '../types';
 interface QueueListProps {
     queue: QueuedArticle[];
     onRemove: (id: string) => void;
+    onShare?: (item: QueuedArticle) => void;
     disabled?: boolean;
     currentUploadProgress?: number;
 }
 
-export function QueueList({ queue, onRemove, disabled, currentUploadProgress }: QueueListProps) {
+export function QueueList({ queue, onRemove, onShare, disabled, currentUploadProgress }: QueueListProps) {
     if (queue.length === 0) {
         return (
             <View style={styles.emptyContainer}>
@@ -81,17 +82,33 @@ export function QueueList({ queue, onRemove, disabled, currentUploadProgress }: 
                             </Text>
                         </View>
 
-                        <TouchableOpacity
-                            style={styles.removeButton}
-                            onPress={() => onRemove(item.id)}
-                            disabled={disabled || item.status === 'processing'}
-                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                        >
-                            <Text style={[
-                                styles.removeIcon,
-                                (disabled || item.status === 'processing') && styles.removeDisabled,
-                            ]}>✕</Text>
-                        </TouchableOpacity>
+                        <View style={styles.actionButtons}>
+                            {onShare && (item.cachedEpubPath || item.isLocalFile) && item.status !== 'processing' && (
+                                <TouchableOpacity
+                                    style={styles.shareButton}
+                                    onPress={() => onShare(item)}
+                                    disabled={disabled}
+                                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                >
+                                    <Text style={[
+                                        styles.shareIcon,
+                                        disabled && styles.removeDisabled,
+                                    ]}>📖</Text>
+                                </TouchableOpacity>
+                            )}
+
+                            <TouchableOpacity
+                                style={styles.removeButton}
+                                onPress={() => onRemove(item.id)}
+                                disabled={disabled || item.status === 'processing'}
+                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                            >
+                                <Text style={[
+                                    styles.removeIcon,
+                                    (disabled || item.status === 'processing') && styles.removeDisabled,
+                                ]}>🗑️</Text>
+                            </TouchableOpacity>
+                        </View>
                     </View>
                 </View>
             ))}
@@ -228,6 +245,24 @@ const styles = StyleSheet.create({
     },
     removeDisabled: {
         color: 'rgba(255,255,255,0.15)',
+    },
+    actionButtons: {
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 14,
+    },
+    shareButton: {
+        width: 32,
+        height: 32,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 16,
+        backgroundColor: 'rgba(108, 99, 255, 0.15)',
+    },
+    shareIcon: {
+        color: '#6c63ff',
+        fontSize: 16,
+        fontWeight: '700',
     },
     separator: {
         height: 6,

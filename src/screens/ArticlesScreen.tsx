@@ -22,7 +22,7 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
-import { cacheDirectory, writeAsStringAsync, EncodingType } from 'expo-file-system/legacy';
+import { cacheDirectory, copyAsync, deleteAsync, writeAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 
@@ -245,6 +245,38 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
         } catch (error) {
             console.warn('Failed to remove from queue:', error);
             Alert.alert('Error', 'Failed to remove article from queue.');
+        }
+    };
+
+    const handleShareEpub = async (item: QueuedArticle) => {
+        const path = item.cachedEpubPath || (item.isLocalFile ? item.url : null);
+        if (!path) return;
+
+        try {
+            const isSupported = await Sharing.isAvailableAsync();
+            if (!isSupported) {
+                Alert.alert('Sharing not available', 'Your device does not support sharing files.');
+                return;
+            }
+
+            // Copy to a temp file with the proper display name so the share
+            // sheet shows the article title instead of the cache hash
+            const sanitized = item.title?.replace(/[^a-zA-Z0-9 _-]/g, '').trim();
+            const displayName = item.cachedEpubFilename
+                || (sanitized ? `${sanitized}.epub` : 'article.epub');
+            const tempPath = `${cacheDirectory}${displayName}`;
+
+            // Clean copy — avoids any base64 encoding issues
+            await deleteAsync(tempPath, { idempotent: true });
+            await copyAsync({ from: path, to: tempPath });
+
+            await Sharing.shareAsync(tempPath, {
+                mimeType: 'application/epub+zip',
+                dialogTitle: 'Share EPUB',
+            });
+        } catch (error) {
+            console.warn('Failed to share EPUB:', error);
+            Alert.alert('Share Failed', 'Could not share the EPUB file.');
         }
     };
 
@@ -641,6 +673,7 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
                     <QueueList
                         queue={queue}
                         onRemove={handleRemoveFromQueue}
+                        onShare={handleShareEpub}
                         disabled={dumpLoading}
                         currentUploadProgress={currentUploadProgress}
                     />
