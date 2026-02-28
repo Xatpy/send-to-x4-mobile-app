@@ -262,7 +262,7 @@ export function SleepScreenDetail({ navigation, route }: any) {
                                 <ActivityIndicator color="white" />
                             ) : (
                                 <Text style={styles.sendButtonText}>
-                                    {sending && globalProgress !== undefined && globalProgress > 0 && globalProgress < 100
+                                    {sending && globalProgress !== undefined && globalProgress >= 0 && globalProgress < 100
                                         ? `Sending (${Math.round(globalProgress)}%)`
                                         : connectionStatus.connected ? 'Send to X4' : 'Connect to Send'}
                                 </Text>

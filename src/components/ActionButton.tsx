@@ -73,7 +73,7 @@ export function ActionButton({
                         variant === 'primary' ? styles.textPrimary : styles.textSecondary,
                     ]}
                 >
-                    {progress !== undefined && progress > 0 && progress < 100
+                    {progress !== undefined && progress >= 0 && progress < 100
                         ? `${title} (${Math.round(progress)}%)`
                         : title}
                 </Text>

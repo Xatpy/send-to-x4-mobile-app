@@ -74,7 +74,7 @@ export function DumpButton({ count, connected, loading, progress, uploadProgress
                         <Text style={styles.icon}>⬆</Text>
                     )}
                     <Text style={[styles.buttonText, isDisabled && styles.buttonTextDisabled]}>
-                        {uploadProgress !== undefined && uploadProgress > 0 && uploadProgress < 100
+                        {uploadProgress !== undefined && uploadProgress >= 0 && uploadProgress < 100
                             ? `${getButtonText()} (${Math.round(uploadProgress)}%)`
                             : getButtonText()}
                     </Text>

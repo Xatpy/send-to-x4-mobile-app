@@ -97,7 +97,7 @@ export function ScreensaverButton({ connected, onImageSelected, loading, progres
                         <Text style={styles.icon}>🖼️</Text>
                     )}
                     <Text style={[styles.buttonText, disabled && styles.buttonTextDisabled]}>
-                        {progress !== undefined && progress > 0 && progress < 100
+                        {progress !== undefined && progress >= 0 && progress < 100
                             ? `${getButtonText()} (${Math.round(progress)}%)`
                             : getButtonText()}
                     </Text>
