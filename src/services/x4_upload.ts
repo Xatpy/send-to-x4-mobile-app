@@ -34,6 +34,7 @@ function getMimeTypeForFilename(filename: string): string {
     const lower = filename.toLowerCase();
     if (lower.endsWith('.txt')) return 'text/plain';
     if (lower.endsWith('.epub')) return 'application/epub+zip';
+    if (lower.endsWith('.xtc')) return 'application/x-xtc';
     return 'application/octet-stream';
 }
 
@@ -269,7 +270,7 @@ export async function listStockFiles(ip: string, targetFolder: string = DEFAULT_
         if (!Array.isArray(items)) return [];
 
         return items
-            .filter((item: any) => item.type === 'file' && (item.name.endsWith('.epub') || item.name.endsWith('.txt')))
+            .filter((item: any) => item.type === 'file' && (item.name.endsWith('.epub') || item.name.endsWith('.txt') || item.name.endsWith('.xtc')))
             .map((item: any) => ({
                 name: safeDecodeURIComponent(item.name),
                 rawName: item.name,

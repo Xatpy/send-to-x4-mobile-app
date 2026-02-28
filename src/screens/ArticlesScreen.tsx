@@ -180,11 +180,11 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
         }
     };
 
-    const handlePickEpub = async () => {
+    const handlePickFile = async () => {
         setQueueLoading(true);
         try {
             const result = await DocumentPicker.getDocumentAsync({
-                type: ['application/epub+zip', 'application/x-epub'],
+                type: ['*/*'],
                 copyToCacheDirectory: true, // Ensure we have access
                 multiple: true,
             });
@@ -195,25 +195,31 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
             let failed = 0;
             for (const file of result.assets) {
                 try {
-                    await addToQueue(file.uri, file.name || 'Imported EPUB', true);
+                    const lowerName = file.name ? file.name.toLowerCase() : '';
+                    if (!lowerName.endsWith('.epub') && !lowerName.endsWith('.xtc') && !lowerName.endsWith('.txt')) {
+                        Alert.alert('Unsupported File', `The file "${file.name}" is not supported. Please select an EPUB, XTC, or TXT file.`);
+                        failed++;
+                        continue;
+                    }
+                    await addToQueue(file.uri, file.name || 'Imported File', true);
                     added++;
                 } catch (error) {
                     failed++;
-                    console.warn('Failed to queue local EPUB:', file?.name, error);
+                    console.warn('Failed to queue local file:', file?.name, error);
                 }
             }
 
             await loadQueue();
             if (added > 0 && failed === 0) {
-                Alert.alert('Added to Queue ✓', `${added} EPUB file${added === 1 ? '' : 's'} saved for later sending.`);
+                Alert.alert('Added to Queue ✓', `${added} file${added === 1 ? '' : 's'} saved for later sending.`);
             } else if (added > 0) {
                 Alert.alert('Partially Added', `${added} added, ${failed} failed.`);
             } else {
-                Alert.alert('Error', 'Failed to add selected EPUB files.');
+                Alert.alert('Error', 'Failed to add selected files.');
             }
         } catch (error) {
-            console.warn('Pick epub error:', error);
-            Alert.alert('Error', 'Failed to pick EPUB file.');
+            console.warn('Pick file error:', error);
+            Alert.alert('Error', 'Failed to pick file.');
         } finally {
             setQueueLoading(false);
         }
@@ -628,12 +634,12 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
                     ) : (
                         <View style={styles.fileSection}>
                             <Text style={styles.fileInstruction}>
-                                Select an EPUB file from your device to add to the queue.
+                                Select an EPUB or XTC file from your device to add to the queue.
                             </Text>
                             <ActionButton
-                                title="PICK EPUB FILE"
+                                title="PICK FILE"
                                 icon="📂"
-                                onPress={handlePickEpub}
+                                onPress={handlePickFile}
                                 loading={queueLoading}
                                 disabled={sendLoading || dumpLoading || queueLoading}
                                 variant="secondary"

@@ -28,7 +28,7 @@ function safeDecodeURIComponent(str: string): string {
 
 
 const DEFAULT_TARGET_FOLDER = 'send-to-x4';
-const TIMEOUT_MS = 60000; // Increased for WS upload
+const TIMEOUT_MS = 300000; // Increased for WS upload (5 minutes)
 
 // Helper: Base64 to Uint8Array
 function base64ToUint8Array(base64: string): Uint8Array {
@@ -351,7 +351,7 @@ export async function listCrossPointFiles(ip: string, targetFolder: string = DEF
         if (!Array.isArray(items)) return [];
 
         return items
-            .filter((item: any) => !item.isDirectory && (item.name.endsWith('.epub') || item.name.endsWith('.txt')))
+            .filter((item: any) => !item.isDirectory && (item.name.endsWith('.epub') || item.name.endsWith('.txt') || item.name.endsWith('.xtc')))
             .map((item: any) => ({
                 name: safeDecodeURIComponent(item.name),
                 rawName: item.name,

@@ -71,20 +71,23 @@ export async function processQueue(
             // 1. Check if local file
             if (item.isLocalFile) {
                 // console.log(`[QueueProcessor] Processing local file: ${item.url}`);
-                // Direct upload
-                if (settings.firmwareType === 'crosspoint') {
-                    const filename = item.title || item.url.split('/').pop() || 'upload.epub';
-                    // Ensure filename ends with .epub if not
-                    const safeFilename = filename.toLowerCase().endsWith('.epub') ? filename : `${filename}.epub`;
-                    // console.log(`[QueueProcessor] Local file upload: ${safeFilename}`);
+                const filename = item.title || item.url.split('/').pop() || 'upload.epub';
+                const lowerFilename = filename.toLowerCase();
+                const isValidExt = lowerFilename.endsWith('.epub') || lowerFilename.endsWith('.xtc') || lowerFilename.endsWith('.txt');
 
-                    const result = await uploadLocalFileToCrossPoint(ip, item.url, safeFilename, onUploadProgress, articleFolder);
+                if (!isValidExt) {
+                    throw new Error(`Unsupported file type: ${filename}. Only EPUB, XTC, and TXT are supported.`);
+                }
+
+                if (settings.firmwareType === 'crosspoint') {
+                    const result = await uploadLocalFileToCrossPoint(ip, item.url, filename, onUploadProgress, articleFolder);
                     if (!result.success) throw new Error(result.error);
                 } else {
-                    // Stock firmware doesn't support direct file upload easily without conversion?
-                    // Or we just implement uploadToStock for files if needed. 
-                    // For now, assume CrossPoint for file uploads or fallback.
-                    throw new Error('Local file upload only supported on CrossPoint firmware');
+                    // Stock firmware
+                    const base64 = await readAsStringAsync(item.url, { encoding: EncodingType.Base64 });
+                    const data = base64ToUint8Array(base64);
+                    const result = await uploadToStock(ip, data, filename, articleFolder);
+                    if (!result.success) throw new Error(result.error || 'Upload failed');
                 }
             } else if (item.cachedEpubPath && item.cachedEpubFilename) {
                 let cachedData: Uint8Array | null = null;

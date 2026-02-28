@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
     View,
     Text,
@@ -20,6 +20,8 @@ import { useNavigation } from '@react-navigation/native';
 import ViewShot from 'react-native-view-shot';
 import Svg, { Path } from 'react-native-svg';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
+import { saveDesignDraft, loadDesignDraft, clearDesignDraft } from '../services/design_storage';
 
 import { useConnection } from '../contexts/ConnectionProvider';
 import { ActionButton } from '../components/ActionButton';
@@ -54,6 +56,7 @@ export function SleepScreenTab() {
     const [currentPath, setCurrentPath] = useState<string>('');
     const [overwriteMain, setOverwriteMain] = useState(false);
     const [showInfoModal, setShowInfoModal] = useState(false);
+    const [draftLoaded, setDraftLoaded] = useState(false);
 
     // Keep context mutable for the PanResponder closure
     const drawingContext = useRef({
@@ -64,6 +67,31 @@ export function SleepScreenTab() {
     useEffect(() => {
         drawingContext.current = { isDrawingMode, setCurrentPath, setDoodlePaths };
     }, [isDrawingMode, setCurrentPath, setDoodlePaths]);
+
+    // ── Restore draft on mount ────────────────────────────────────
+    useEffect(() => {
+        (async () => {
+            const draft = await loadDesignDraft();
+            if (draft) {
+                setElements(draft.elements);
+                setDoodlePaths(draft.doodlePaths);
+                setIsInverted(draft.isInverted);
+                setOverwriteMain(draft.overwriteMain);
+            }
+            setDraftLoaded(true);
+        })();
+    }, []);
+
+    // ── Debounced auto-save ───────────────────────────────────────
+    const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    useEffect(() => {
+        if (!draftLoaded) return; // don't save before restore completes
+        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = setTimeout(() => {
+            saveDesignDraft({ elements, doodlePaths, isInverted, overwriteMain });
+        }, 500);
+        return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+    }, [elements, doodlePaths, isInverted, overwriteMain, draftLoaded]);
 
     const [isSending, setIsSending] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -152,10 +180,16 @@ export function SleepScreenTab() {
             });
 
             if (!result.canceled && result.assets && result.assets.length > 0) {
+                // Copy to documentDirectory so the URI survives app restarts
+                const sourceUri = result.assets[0].uri;
+                const persistentName = `design_img_${Date.now()}.png`;
+                const persistentUri = `${FileSystem.documentDirectory}${persistentName}`;
+                await FileSystem.copyAsync({ from: sourceUri, to: persistentUri });
+
                 const newEl: CanvasElement = {
                     id: Date.now().toString(),
                     type: 'image',
-                    content: result.assets[0].uri,
+                    content: persistentUri,
                     x: 50,
                     y: 50,
                     scale: 1,
@@ -175,7 +209,15 @@ export function SleepScreenTab() {
         setElements(prev => prev.map(el => el.id === id ? { ...el, ...updates } : el));
     };
 
-    const removeElement = (id: string) => {
+    const removeElement = async (id: string) => {
+        const element = elements.find(el => el.id === id);
+        if (element?.type === 'image' && element.content.startsWith(FileSystem.documentDirectory || '')) {
+            try {
+                await FileSystem.deleteAsync(element.content, { idempotent: true });
+            } catch (e) {
+                console.warn('Failed to delete image file', e);
+            }
+        }
         setElements(prev => prev.filter(el => el.id !== id));
         if (selectedId === id) setSelectedId(null);
         if (editingTextId === id) setEditingTextId(null);
@@ -190,12 +232,20 @@ export function SleepScreenTab() {
                 {
                     text: 'Clear',
                     style: 'destructive',
-                    onPress: () => {
+                    onPress: async () => {
+                        for (const el of elements) {
+                            if (el.type === 'image' && el.content.startsWith(FileSystem.documentDirectory || '')) {
+                                try {
+                                    await FileSystem.deleteAsync(el.content, { idempotent: true });
+                                } catch (e) { }
+                            }
+                        }
                         setElements([]);
                         setDoodlePaths([]);
                         setCurrentPath('');
                         setSelectedId(null);
                         setEditingTextId(null);
+                        clearDesignDraft();
                     }
                 }
             ]
