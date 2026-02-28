@@ -30,6 +30,7 @@ import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useConnection } from '../contexts/ConnectionProvider';
+import { useProgress } from '../contexts/ProgressProvider';
 import { ActionButton } from '../components/ActionButton';
 import { sendNoteAsTxt } from '../services/note_sender';
 import { sendNoteAsEpub } from '../services/note_epub_sender';
@@ -55,6 +56,9 @@ export function NotesScreen({ sharedText, onSharedTextConsumed }: NotesScreenPro
     const [sending, setSending] = useState(false);
     const [sendingEpub, setSendingEpub] = useState(false);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+    const { progress: globalProgress, startUpload, setProgress, finishUpload, failUpload } = useProgress();
+
     const inputRef = useRef<TextInput>(null);
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const saveTitleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -205,17 +209,20 @@ export function NotesScreen({ sharedText, onSharedTextConsumed }: NotesScreenPro
         Keyboard.dismiss();
         setSending(true);
         setSuccessMessage(null);
+        startUpload(`Preparing TXT note...`);
 
         try {
-            const result = await sendNoteAsTxt(text, settings, title);
+            const result = await sendNoteAsTxt(text, settings, title, (percent) => setProgress(percent));
 
             if (!result.success) {
                 throw new Error(result.error || 'Upload failed');
             }
 
+            finishUpload();
             setSuccessMessage('Sent! ✓');
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Unknown error';
+            failUpload(message);
             Alert.alert('Send Failed', message);
         } finally {
             setSending(false);
@@ -237,17 +244,20 @@ export function NotesScreen({ sharedText, onSharedTextConsumed }: NotesScreenPro
         Keyboard.dismiss();
         setSendingEpub(true);
         setSuccessMessage(null);
+        startUpload(`Preparing EPUB note...`);
 
         try {
-            const result = await sendNoteAsEpub(text, settings, title);
+            const result = await sendNoteAsEpub(text, settings, title, (percent) => setProgress(percent));
 
             if (!result.success) {
                 throw new Error(result.error || 'Upload failed');
             }
 
+            finishUpload();
             setSuccessMessage('Sent as EPUB! ✓');
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Unknown error';
+            failUpload(message);
             Alert.alert('Send Failed', message);
         } finally {
             setSendingEpub(false);
@@ -353,6 +363,7 @@ export function NotesScreen({ sharedText, onSharedTextConsumed }: NotesScreenPro
                                     loading={sending}
                                     disabled={!text.trim() || sending || sendingEpub}
                                     variant="primary"
+                                    progress={sending ? globalProgress : undefined}
                                 />
                             </View>
                             <View style={styles.sendHalf}>
@@ -363,6 +374,7 @@ export function NotesScreen({ sharedText, onSharedTextConsumed }: NotesScreenPro
                                     loading={sendingEpub}
                                     disabled={!text.trim() || sending || sendingEpub}
                                     variant="secondary"
+                                    progress={sendingEpub ? globalProgress : undefined}
                                 />
                             </View>
                         </View>

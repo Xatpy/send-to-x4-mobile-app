@@ -9,7 +9,8 @@ import { generateAndSaveThumbnail } from '../services/thumbnail_generator';
 export async function processAndSendSleepScreen(
     viewShotUri: string,
     settings: Settings,
-    customFilename?: string
+    customFilename?: string,
+    onProgress?: (percent: number) => void
 ): Promise<{ success: boolean; error?: string }> {
     try {
         const ip = getCurrentIp(settings);
@@ -22,10 +23,10 @@ export async function processAndSendSleepScreen(
 
         if (settings.firmwareType === 'crosspoint') {
             // Send to sleep folder on CrossPoint
-            uploadResult = await uploadScreensaverToCrossPoint(ip, data, filename);
+            uploadResult = await uploadScreensaverToCrossPoint(ip, data, filename, onProgress);
         } else {
             // Upload to stock (we use 'sleep' fallback directory)
-            uploadResult = await uploadToStock(ip, data, filename, 'sleep');
+            uploadResult = await uploadToStock(ip, data, filename, 'sleep', onProgress);
         }
 
         if (uploadResult?.success) {

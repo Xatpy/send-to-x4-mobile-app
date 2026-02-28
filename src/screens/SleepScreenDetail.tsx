@@ -3,7 +3,9 @@ import { View, Text, StyleSheet, Image, TouchableOpacity, ActivityIndicator, Ale
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WallpaperItem, downloadWallpaperBmp, fetchRandomWallpaperJSON } from '../services/lowioWallpapers';
 import { useConnection } from '../contexts/ConnectionProvider';
+import { useProgress } from '../contexts/ProgressProvider';
 import { uploadScreensaverToCrossPoint } from '../services/crosspoint_upload';
+import Animated, { useAnimatedStyle, withTiming, Easing } from 'react-native-reanimated';
 import { getCurrentIp } from '../services/settings';
 import { addRecentWallpaper } from '../services/wallpaper_storage';
 import { savePreviewMapping } from '../services/preview_cache';
@@ -39,6 +41,7 @@ export function SleepScreenDetail({ navigation, route }: any) {
 
     const [sending, setSending] = useState(false);
     const { connectionStatus, settings } = useConnection();
+    const { progress: globalProgress, startUpload, setProgress, finishUpload, failUpload } = useProgress();
 
     // Swipe logic
     const panResponder = useRef(
@@ -95,6 +98,7 @@ export function SleepScreenDetail({ navigation, route }: any) {
         try {
             setSending(true);
             const ip = getCurrentIp(settings);
+            startUpload('Downloading wallpaper...');
 
             // 1. Download BMP bytes from Lowio
             let finalOutputUrl = currentItem.bmpUrl;
@@ -111,21 +115,25 @@ export function SleepScreenDetail({ navigation, route }: any) {
             // 2. Upload to X4
             const safeHash = currentItem.hash.replace(/[^a-zA-Z0-9]/g, '_');
             const filename = `lowio_${safeHash}_${Date.now()}.bmp`;
-            const result = await uploadScreensaverToCrossPoint(ip, bmpBytes, filename);
+            startUpload('Sending to X4...');
+            const result = await uploadScreensaverToCrossPoint(ip, bmpBytes, filename, (percent) => setProgress(percent));
 
             if (result.success) {
                 // 3. Save to recent storage & preview cache
                 await addRecentWallpaper(currentItem);
                 await savePreviewMapping(filename, currentItem.webpUrl);
 
+                finishUpload();
                 Alert.alert('Success', 'Wallpaper sent to X4!', [
                     { text: 'OK', onPress: () => navigation.goBack() }
                 ]);
             } else {
-                Alert.alert('Upload Failed', result.error || 'Unknown error occurred');
+                throw new Error(result.error || 'Unknown error occurred');
             }
         } catch (error: any) {
-            Alert.alert('Error', error.message || 'Failed to download or send wallpaper');
+            const message = error.message || 'Failed to download or send wallpaper';
+            failUpload(message);
+            Alert.alert('Error', message);
         } finally {
             setSending(false);
         }
@@ -143,6 +151,14 @@ export function SleepScreenDetail({ navigation, route }: any) {
             setImageLoading(false);
         }
     };
+
+    const fillStyle = useAnimatedStyle(() => {
+        const percent = sending && globalProgress !== undefined ? Math.max(0, Math.min(100, globalProgress)) : 0;
+        return {
+            width: withTiming(`${percent}%`, { duration: 200, easing: Easing.out(Easing.ease) }),
+            opacity: sending && globalProgress !== undefined && globalProgress > 0 ? 1 : 0,
+        };
+    }, [sending, globalProgress]);
 
     const displayTitle = currentItem.title || "Curated Wallpaper";
     const displayAuthor = currentItem.author || "Community Gallery";
@@ -238,13 +254,20 @@ export function SleepScreenDetail({ navigation, route }: any) {
                         onPress={handleSend}
                         disabled={!connectionStatus.connected || sending}
                     >
-                        {sending ? (
-                            <ActivityIndicator color="white" />
-                        ) : (
-                            <Text style={styles.sendButtonText}>
-                                {connectionStatus.connected ? 'Send to X4' : 'Connect to Send'}
-                            </Text>
+                        {sending && globalProgress !== undefined && (
+                            <Animated.View style={[styles.progressFill, fillStyle]} />
                         )}
+                        <View style={{ zIndex: 2, alignItems: 'center', justifyContent: 'center' }}>
+                            {sending && globalProgress === undefined ? (
+                                <ActivityIndicator color="white" />
+                            ) : (
+                                <Text style={styles.sendButtonText}>
+                                    {sending && globalProgress !== undefined && globalProgress > 0 && globalProgress < 100
+                                        ? `Sending (${Math.round(globalProgress)}%)`
+                                        : connectionStatus.connected ? 'Send to X4' : 'Connect to Send'}
+                                </Text>
+                            )}
+                        </View>
                     </TouchableOpacity>
                 </View>
 
@@ -426,6 +449,16 @@ const styles = StyleSheet.create({
         borderRadius: 12,
         alignItems: 'center',
         justifyContent: 'center',
+        overflow: 'hidden',
+        position: 'relative',
+    },
+    progressFill: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(255, 255, 255, 0.25)',
+        zIndex: 1,
     },
     sendButtonFlex: {
         flex: 2, // Take up more space than the Random button when side-by-side

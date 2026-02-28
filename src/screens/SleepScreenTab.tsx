@@ -24,6 +24,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { saveDesignDraft, loadDesignDraft, clearDesignDraft } from '../services/design_storage';
 
 import { useConnection } from '../contexts/ConnectionProvider';
+import { useProgress } from '../contexts/ProgressProvider';
 import { ActionButton } from '../components/ActionButton';
 import { processAndSendSleepScreen, processAndSaveSleepScreenLocally } from '../sleepScreen/sleepScreenService';
 import * as Sharing from 'expo-sharing';
@@ -57,6 +58,8 @@ export function SleepScreenTab() {
     const [overwriteMain, setOverwriteMain] = useState(false);
     const [showInfoModal, setShowInfoModal] = useState(false);
     const [draftLoaded, setDraftLoaded] = useState(false);
+
+    const { progress: globalProgress, startUpload, setProgress, finishUpload, failUpload } = useProgress();
 
     // Keep context mutable for the PanResponder closure
     const drawingContext = useRef({
@@ -280,19 +283,23 @@ export function SleepScreenTab() {
 
         setIsSending(true);
         setSuccessMessage(null);
+        startUpload('Preparing custom design...');
 
         try {
             const uri = await captureCanvas();
             if (!uri) throw new Error('Could not capture screen');
 
-            const result = await processAndSendSleepScreen(uri, settings, overwriteMain ? 'main-todo.bmp' : undefined);
+            const result = await processAndSendSleepScreen(uri, settings, overwriteMain ? 'main-todo.bmp' : undefined, (percent) => setProgress(percent));
             if (result.success) {
+                finishUpload();
                 setSuccessMessage('Sent! Open it on X4 and set as Sleep Screen.');
             } else {
                 throw new Error(result.error || 'Failed to send');
             }
         } catch (e) {
-            Alert.alert('Send Failed', e instanceof Error ? e.message : String(e));
+            const message = e instanceof Error ? e.message : String(e);
+            failUpload(message);
+            Alert.alert('Send Failed', message);
         } finally {
             setIsSending(false);
             // Hide success message after 3 seconds
@@ -467,6 +474,7 @@ export function SleepScreenTab() {
                         loading={isSending}
                         disabled={(elements.length === 0 && doodlePaths.length === 0 && !currentPath) || isSending || isSaving}
                         variant="primary"
+                        progress={isSending ? globalProgress : undefined}
                     />
                 </View>
             </View>

@@ -66,6 +66,7 @@ export async function sendNoteAsTxt(
     noteText: string,
     settings: Settings,
     title?: string,
+    onProgress?: (percent: number) => void
 ): Promise<UploadResult> {
     const filename = generateNoteFilename(title);
     const data = new TextEncoder().encode(noteText);
@@ -75,9 +76,9 @@ export async function sendNoteAsTxt(
     console.log(`[NoteSender] Sending note: filename=${filename}, size=${data.length} bytes, ip=${ip}, folder=${noteFolder}`);
 
     if (settings.firmwareType === 'crosspoint') {
-        return uploadToCrossPoint(ip, data, filename, undefined, noteFolder);
+        return uploadToCrossPoint(ip, data, filename, onProgress, noteFolder);
     } else {
-        return uploadToStock(ip, data, filename, noteFolder);
+        return uploadToStock(ip, data, filename, noteFolder, onProgress);
     }
 }
 

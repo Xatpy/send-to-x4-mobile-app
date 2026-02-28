@@ -50,7 +50,8 @@ export async function uploadToStock(
     ip: string,
     epubData: Uint8Array,
     filename: string,
-    targetFolder: string = DEFAULT_TARGET_FOLDER
+    targetFolder: string = DEFAULT_TARGET_FOLDER,
+    onProgress?: (percent: number) => void
 ): Promise<UploadResult> {
     let tempFile: File | null = null;
     const baseUrl = getDeviceBaseUrl(ip);
@@ -109,6 +110,7 @@ export async function uploadToStock(
         console.log(`[Upload] Stock Response: status=${response.status}, body=${responseBody.substring(0, 500)}`);
 
         if (response.ok) {
+            onProgress?.(100);
             return { success: true };
         } else {
             return {

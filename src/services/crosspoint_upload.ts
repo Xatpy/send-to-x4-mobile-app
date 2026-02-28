@@ -62,6 +62,10 @@ async function uploadViaWebSocket(
         console.log(`[WS] Connecting to ${wsUrl}`);
         const ws = new WebSocket(wsUrl);
 
+        let serverAcked = 0;
+        let ackResolver: (() => void) | null = null;
+        const MAX_IN_FLIGHT = 128 * 1024; // 128KB max unacked data
+
         // Safety timeout
         const timeout = setTimeout(() => {
             if (ws.readyState === WebSocket.OPEN) ws.close();
@@ -83,18 +87,31 @@ async function uploadViaWebSocket(
                 const CHUNK_SIZE = 4096;
                 let offset = 0;
 
-                // We'll use a recursive function or loop to send chunks to avoid blocking UI too much
                 const sendChunks = async () => {
                     try {
                         while (offset < data.length && ws.readyState === WebSocket.OPEN) {
+                            if (offset - serverAcked >= MAX_IN_FLIGHT) {
+                                // Wait for the server to catch up
+                                await new Promise<void>(resolve => {
+                                    ackResolver = resolve;
+                                    // Fallback timeout in case PROGRESS message is missed
+                                    setTimeout(() => {
+                                        if (ackResolver === resolve) {
+                                            ackResolver = null;
+                                            resolve();
+                                        }
+                                    }, 1000);
+                                });
+                            }
+
                             const end = Math.min(offset + CHUNK_SIZE, data.length);
                             const chunk = data.slice(offset, end);
                             ws.send(chunk);
                             offset += CHUNK_SIZE;
 
-                            // Small yield every few chunks to allow UI updates / WebSocket processing
-                            if (offset % (CHUNK_SIZE * 10) === 0) {
-                                await new Promise(r => setTimeout(r, 0));
+                            // Small yield every 16KB to allow UI updates and JS bridge flushing
+                            if (offset % (CHUNK_SIZE * 4) === 0) {
+                                await new Promise(r => setTimeout(r, 10)); // 10ms yield
                             }
                         }
                         // console.log('[WS] All chunks sent. Waiting for DONE...');
@@ -120,10 +137,17 @@ async function uploadViaWebSocket(
             } else if (typeof msg === 'string' && msg.startsWith('PROGRESS:')) {
                 // Format: PROGRESS:current:total
                 const parts = msg.split(':');
-                if (parts.length === 3 && onProgress) {
+                if (parts.length === 3) {
                     const current = parseInt(parts[1], 10);
                     const total = parseInt(parts[2], 10);
-                    if (total > 0) {
+                    serverAcked = current;
+
+                    if (ackResolver) {
+                        ackResolver();
+                        ackResolver = null;
+                    }
+
+                    if (total > 0 && onProgress) {
                         const percent = Math.min(100, Math.round((current / total) * 100));
                         onProgress(percent);
                     }

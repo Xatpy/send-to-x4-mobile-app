@@ -27,11 +27,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 
 import { useConnection } from '../contexts/ConnectionProvider';
+import { ConnectionBanner } from '../components/ConnectionBanner';
 import { UrlInput } from '../components/UrlInput';
 import { ActionButton } from '../components/ActionButton';
 import { QueueList } from '../components/QueueList';
 import { DumpButton } from '../components/DumpButton';
 import { HeadlessWebView } from '../components/HeadlessWebView';
+import { useProgress } from '../contexts/ProgressProvider';
 
 import type { AppState, ExtractionResult, QueuedArticle } from '../types';
 import { isValidUrl } from '../utils/sanitizer';
@@ -80,6 +82,8 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
         title?: string;
     } | undefined>();
     const [currentUploadProgress, setCurrentUploadProgress] = useState<number | undefined>();
+
+    const { progress: globalProgress, startUpload, setProgress, finishUpload, failUpload, clearProgress } = useProgress();
     const [queueLoading, setQueueLoading] = useState(false);
 
     const loadQueue = useCallback(async () => {
@@ -303,28 +307,34 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
 
         setDumpLoading(true);
         setDumpProgress(undefined);
-        setCurrentUploadProgress(0);
+        setCurrentUploadProgress(undefined);
+
+        startUpload(`Preparing queue...`);
 
         try {
             const result = await processQueue(
                 settings,
                 (current, total, title) => {
                     setDumpProgress({ current, total, title });
-                    setCurrentUploadProgress(0); // Reset for next item
+                    setCurrentUploadProgress(undefined); // Reset for next item
+                    startUpload(`Sending ${current}/${total}: ${title || 'file'}...`);
                 },
                 (percent) => {
                     setCurrentUploadProgress(percent);
+                    setProgress(percent);
                 }
             );
 
             await loadQueue();
 
             if (result.failed.length === 0) {
+                finishUpload();
                 Alert.alert(
                     'All Sent! ✓',
                     `${result.succeeded} article${result.succeeded !== 1 ? 's' : ''} sent to your X4.`
                 );
             } else {
+                failUpload(`Completed with ${result.failed.length} failure(s)`);
                 const failedSummary = result.failed
                     .map(f => `• ${f.title || f.url}\n  ${f.error}`)
                     .join('\n\n');
@@ -336,6 +346,7 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
             }
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Unknown error';
+            failUpload(message);
             Alert.alert('Dump Failed', message);
         } finally {
             setDumpLoading(false);
@@ -410,6 +421,7 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
 
     const handleError = (error: any) => {
         const message = error instanceof Error ? error.message : 'Unknown error';
+        failUpload(message);
         setAppState('error');
         setErrorMessage(message);
         Alert.alert('Error', message);
@@ -430,16 +442,23 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
             const articleFolder = resolveTargetFolder(getArticleFolder(settings), settings.useDateFolders);
             let uploadResult;
 
+            startUpload(`Sending "${extraction.article.title}"...`);
+
             if (settings.firmwareType === 'crosspoint') {
-                uploadResult = await uploadToCrossPoint(ip, epub.data, epub.filename, undefined, articleFolder);
+                uploadResult = await uploadToCrossPoint(ip, epub.data, epub.filename, (percent) => {
+                    setProgress(percent);
+                }, articleFolder);
             } else {
-                uploadResult = await uploadToStock(ip, epub.data, epub.filename, articleFolder);
+                uploadResult = await uploadToStock(ip, epub.data, epub.filename, articleFolder, (percent) => {
+                    setProgress(percent);
+                });
             }
 
             if (!uploadResult.success) {
                 throw new Error(uploadResult.error || 'Upload failed');
             }
 
+            finishUpload();
             setAppState('success');
             setUrl('');
 
@@ -590,6 +609,7 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
                                         loading={sendLoading}
                                         disabled={!url.trim() || dumpLoading || (EPUB_DEBUG_TOOLS_ENABLED && extractOnlyLoading)}
                                         variant="primary"
+                                        progress={sendLoading ? globalProgress : undefined}
                                     />
                                 </View>
                                 <View style={styles.buttonHalf}>
@@ -691,6 +711,7 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
                                 connected={connectionStatus.connected}
                                 loading={dumpLoading}
                                 progress={dumpProgress}
+                                uploadProgress={currentUploadProgress}
                                 onPress={handleDumpQueue}
                             />
                         </View>

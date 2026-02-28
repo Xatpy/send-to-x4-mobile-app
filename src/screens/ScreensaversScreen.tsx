@@ -20,6 +20,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 
 import { useConnection } from '../contexts/ConnectionProvider';
+import { useProgress } from '../contexts/ProgressProvider';
 import { ScreensaverButton } from '../components/ScreensaverButton';
 import { ScreensaverQueueList } from '../components/ScreensaverQueueList';
 import { DumpButton } from '../components/DumpButton';
@@ -57,6 +58,8 @@ export function ScreensaversScreen({ sharedImage, onSharedImageConsumed }: Scree
     const [queue, setQueue] = useState<QueuedScreensaver[]>([]);
     const [processingQueue, setProcessingQueue] = useState(false);
     const [progressMessage, setProgressMessage] = useState('');
+
+    const { progress: globalProgress, startUpload, setProgress, finishUpload, failUpload } = useProgress();
 
     // Load queue on mount
     useEffect(() => {
@@ -121,10 +124,13 @@ export function ScreensaversScreen({ sharedImage, onSharedImageConsumed }: Scree
         }
 
         setLoading(true);
+        startUpload(`Preparing screensaver...`);
         try {
             const bmp = await convertImageToScreensaverBmp(uri, width, height);
             const ip = getCurrentIp(settings);
-            const result = await uploadScreensaverToCrossPoint(ip, bmp.data, bmp.filename);
+            const result = await uploadScreensaverToCrossPoint(ip, bmp.data, bmp.filename, (percent) => {
+                setProgress(percent);
+            });
 
             if (!result.success) {
                 throw new Error(result.error || 'Upload failed');
@@ -133,9 +139,11 @@ export function ScreensaversScreen({ sharedImage, onSharedImageConsumed }: Scree
             // Generate and save a tiny local thumbnail for the device screen
             await generateAndSaveThumbnail(uri, bmp.filename);
 
+            finishUpload();
             Alert.alert('Success! ✓', `Screensaver "${bmp.filename}" has been sent to your X4.`);
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Unknown error';
+            failUpload(message);
             Alert.alert('Upload Failed', message);
         } finally {
             setLoading(false);
@@ -173,15 +181,24 @@ export function ScreensaversScreen({ sharedImage, onSharedImageConsumed }: Scree
 
         setProcessingQueue(true);
         setProgressMessage('Preparing upload...');
+        startUpload('Preparing queue...');
 
         try {
-            const result = await processScreensaverQueue(settings, (current, total, filename) => {
-                setProgressMessage(`Uploading ${current} of ${total}...\n${filename}`);
-            });
+            const result = await processScreensaverQueue(
+                settings,
+                (current, total, filename) => {
+                    setProgressMessage(`Uploading ${current} of ${total}...\n${filename}`);
+                    startUpload(`Uploading ${current}/${total}: ${filename}...`);
+                },
+                (percent) => {
+                    setProgress(percent);
+                }
+            );
 
             await loadQueue(); // Reload to show updated statuses
 
             if (result.failed.length > 0) {
+                failUpload(`Completed with ${result.failed.length} failure(s)`);
                 // Wait a bit to let modal fade out/process? No, modal hides in finally.
                 // We show alert after modal hides.
                 setTimeout(() => {
@@ -191,6 +208,7 @@ export function ScreensaversScreen({ sharedImage, onSharedImageConsumed }: Scree
                     );
                 }, 500);
             } else {
+                finishUpload();
                 setTimeout(() => {
                     Alert.alert('Batch Complete', `Successfully uploaded all ${result.succeeded} images!`);
 
@@ -214,7 +232,9 @@ export function ScreensaversScreen({ sharedImage, onSharedImageConsumed }: Scree
             }
         } catch (error) {
             setTimeout(() => {
-                Alert.alert('Error', 'Failed to process queue.');
+                const message = error instanceof Error ? error.message : 'Failed to process queue.';
+                failUpload(message);
+                Alert.alert('Error', message);
             }, 500);
         } finally {
             setProcessingQueue(false);
@@ -293,6 +313,7 @@ export function ScreensaversScreen({ sharedImage, onSharedImageConsumed }: Scree
                     connected={connectionStatus.connected}
                     onImageSelected={handleImageAction}
                     loading={loading}
+                    progress={loading ? globalProgress : undefined}
                 />
 
                 <View style={styles.queueHeader}>
@@ -326,6 +347,7 @@ export function ScreensaversScreen({ sharedImage, onSharedImageConsumed }: Scree
                             onPress={handleDumpQueue}
                             label={processingQueue ? "UPLOADING..." : `SEND ${queue.length} IMAGES TO X4`}
                             loading={processingQueue}
+                            uploadProgress={processingQueue ? globalProgress : undefined}
                             disabled={!connectionStatus.connected}
                         />
                         {!connectionStatus.connected && (

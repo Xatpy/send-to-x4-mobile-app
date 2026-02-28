@@ -86,7 +86,7 @@ export async function processQueue(
                     // Stock firmware
                     const base64 = await readAsStringAsync(item.url, { encoding: EncodingType.Base64 });
                     const data = base64ToUint8Array(base64);
-                    const result = await uploadToStock(ip, data, filename, articleFolder);
+                    const result = await uploadToStock(ip, data, filename, articleFolder, onUploadProgress);
                     if (!result.success) throw new Error(result.error || 'Upload failed');
                 }
             } else if (item.cachedEpubPath && item.cachedEpubFilename) {
@@ -119,7 +119,7 @@ export async function processQueue(
                     if (settings.firmwareType === 'crosspoint') {
                         fallbackUploadResult = await uploadToCrossPoint(ip, epub.data, epub.filename, onUploadProgress, articleFolder);
                     } else {
-                        fallbackUploadResult = await uploadToStock(ip, epub.data, epub.filename, articleFolder);
+                        fallbackUploadResult = await uploadToStock(ip, epub.data, epub.filename, articleFolder, onUploadProgress);
                     }
 
                     if (!fallbackUploadResult.success) {
@@ -133,7 +133,7 @@ export async function processQueue(
                     if (settings.firmwareType === 'crosspoint') {
                         uploadResult = await uploadToCrossPoint(ip, cachedData, item.cachedEpubFilename, onUploadProgress, articleFolder);
                     } else {
-                        uploadResult = await uploadToStock(ip, cachedData, item.cachedEpubFilename, articleFolder);
+                        uploadResult = await uploadToStock(ip, cachedData, item.cachedEpubFilename, articleFolder, onUploadProgress);
                     }
 
                     if (!uploadResult.success) {
@@ -157,7 +157,7 @@ export async function processQueue(
                 if (settings.firmwareType === 'crosspoint') {
                     uploadResult = await uploadToCrossPoint(ip, epub.data, epub.filename, onUploadProgress, articleFolder);
                 } else {
-                    uploadResult = await uploadToStock(ip, epub.data, epub.filename, articleFolder);
+                    uploadResult = await uploadToStock(ip, epub.data, epub.filename, articleFolder, onUploadProgress);
                 }
 
                 if (!uploadResult.success) {

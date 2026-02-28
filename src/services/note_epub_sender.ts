@@ -35,6 +35,7 @@ export async function sendNoteAsEpub(
     noteText: string,
     settings: Settings,
     title?: string,
+    onProgress?: (percent: number) => void
 ): Promise<UploadResult> {
     const noteTitle = title?.trim() || 'Untitled Note';
     const date = new Date().toISOString().split('T')[0];
@@ -64,8 +65,8 @@ export async function sendNoteAsEpub(
     console.log(`[NoteEpubSender] Sending note as EPUB: filename=${filename}, size=${epub.data.length} bytes`);
 
     if (settings.firmwareType === 'crosspoint') {
-        return uploadToCrossPoint(ip, epub.data, filename, undefined, articleFolder);
+        return uploadToCrossPoint(ip, epub.data, filename, onProgress, articleFolder);
     } else {
-        return uploadToStock(ip, epub.data, filename, articleFolder);
+        return uploadToStock(ip, epub.data, filename, articleFolder, onProgress);
     }
 }

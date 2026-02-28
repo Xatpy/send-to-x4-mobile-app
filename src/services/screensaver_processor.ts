@@ -16,7 +16,8 @@ export interface ScreensaverDumpResult {
  */
 export async function processScreensaverQueue(
     settings: Settings,
-    onProgress?: (current: number, total: number, filename?: string) => void
+    onProgress?: (current: number, total: number, filename?: string) => void,
+    onUploadProgress?: (percent: number) => void
 ): Promise<ScreensaverDumpResult> {
     const queue = await getScreensaverQueue();
     const pendingItems = queue.filter(
@@ -47,7 +48,7 @@ export async function processScreensaverQueue(
             let uploadResult: UploadResult = { success: false, error: 'Firmware not supported' };
 
             if (settings.firmwareType === 'crosspoint') {
-                uploadResult = await uploadScreensaverToCrossPoint(ip, bmp.data, item.filename);
+                uploadResult = await uploadScreensaverToCrossPoint(ip, bmp.data, item.filename, onUploadProgress);
             } else {
                 // TODO: Implement Stock upload if needed, or fallback
                 uploadResult = { success: false, error: 'Screensaver upload only supported on CrossPoint' };

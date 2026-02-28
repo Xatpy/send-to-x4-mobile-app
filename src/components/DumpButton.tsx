@@ -6,34 +6,30 @@ import {
     ActivityIndicator,
     View,
 } from 'react-native';
+import Animated, { useAnimatedStyle, withTiming, Easing } from 'react-native-reanimated';
 
 interface DumpButtonProps {
     count: number;
     connected: boolean;
     loading: boolean;
     progress?: { current: number; total: number; title?: string };
+    uploadProgress?: number; // 0 to 100
     onPress: () => void;
     label?: string;
     hint?: string;
     disabled?: boolean;
 }
 
-export function DumpButton({ count, connected, loading, progress, onPress, label, hint, disabled: forceDisabled }: DumpButtonProps) {
-    // If we have a custom label, we might want to allow pressing even if not connected (handled by parent)
-    // But for now, let's keep strict check unless we want to change behavior.
-    // Actually, ScreensaversScreen handles "Not Connected" alert in onPress, so we should enable button?
-    // The current logic disables if !connected.
-    // Let's rely on 'count' and 'loading'. Implementation in ScreensaversScreen passes disabled={!connected} to DumpButton?
-    // No, ScreensaversScreen passes disabled={!connected} to its own ActionButton, but here we use DumpButton.
-    // Let's trust the props.
-
+export function DumpButton({ count, connected, loading, progress, uploadProgress, onPress, label, hint, disabled: forceDisabled }: DumpButtonProps) {
     const isDisabled = forceDisabled || count === 0 || (!connected && !label) || loading;
-    // If label is provided (like "SEND QUEUE"), maybe we still want to disable if not connected?
-    // Let's stick to original logic: disable if not connected. Status check should be in parent?
-    // In ArticlesScreen, DumpButton is disabled if !connected.
-    // In ScreensaversScreen, I want to show "Connect to X4" hint if !connected.
 
-    // Let's render the button disabled if !connected, but show the hint.
+    const fillStyle = useAnimatedStyle(() => {
+        const percent = uploadProgress !== undefined ? Math.max(0, Math.min(100, uploadProgress)) : 0;
+        return {
+            width: withTiming(`${percent}%`, { duration: 200, easing: Easing.out(Easing.ease) }),
+            opacity: uploadProgress !== undefined && uploadProgress > 0 ? 1 : 0,
+        };
+    }, [uploadProgress]);
 
     const getButtonText = () => {
         if (loading && progress) {
@@ -66,14 +62,23 @@ export function DumpButton({ count, connected, loading, progress, onPress, label
                 disabled={isDisabled}
                 activeOpacity={0.7}
             >
-                {loading ? (
-                    <ActivityIndicator color="#fff" size="small" style={styles.spinner} />
-                ) : (
-                    <Text style={styles.icon}>⬆</Text>
+                {/* Progress Fill Background */}
+                {uploadProgress !== undefined && (
+                    <Animated.View style={[styles.progressFill, fillStyle]} />
                 )}
-                <Text style={[styles.buttonText, isDisabled && styles.buttonTextDisabled]}>
-                    {getButtonText()}
-                </Text>
+
+                <View style={styles.content}>
+                    {loading ? (
+                        <ActivityIndicator color="#fff" size="small" style={styles.spinner} />
+                    ) : (
+                        <Text style={styles.icon}>⬆</Text>
+                    )}
+                    <Text style={[styles.buttonText, isDisabled && styles.buttonTextDisabled]}>
+                        {uploadProgress !== undefined && uploadProgress > 0 && uploadProgress < 100
+                            ? `${getButtonText()} (${Math.round(uploadProgress)}%)`
+                            : getButtonText()}
+                    </Text>
+                </View>
             </TouchableOpacity>
 
             {!connected && count > 0 && (
@@ -93,18 +98,32 @@ export function DumpButton({ count, connected, loading, progress, onPress, label
 
 const styles = StyleSheet.create({
     button: {
-        flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: '#7c3aed',
-        paddingVertical: 18,
-        paddingHorizontal: 24,
         borderRadius: 14,
         shadowColor: '#7c3aed',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.3,
         shadowRadius: 8,
         elevation: 6,
+        overflow: 'hidden',
+    },
+    content: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 18,
+        paddingHorizontal: 24,
+        zIndex: 2,
+    },
+    progressFill: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(255, 255, 255, 0.25)',
+        zIndex: 1,
     },
     buttonDisabled: {
         backgroundColor: 'rgba(124, 58, 237, 0.3)',

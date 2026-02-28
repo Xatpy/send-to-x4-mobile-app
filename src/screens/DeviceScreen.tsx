@@ -2,7 +2,7 @@
  * DeviceScreen — Tab showing files on the connected X4 device.
  *
  * Sections are discovered recursively from configured roots:
- *   - Articles: files in article folder tree (.epub, .txt)
+ *   - Articles: files in article folder tree (.epub, .txt, .xtc)
  *   - Notes: files in note folder tree (.txt)
  *   - Screensavers: files in /sleep tree (.bmp, CrossPoint)
  *
@@ -163,7 +163,7 @@ export function DeviceScreen() {
         // Load independently to avoid one blocking the other
         const loadArticlesPromise = (async () => {
             try {
-                const items = await deepScanFolder(baseUrl, settings.firmwareType, articleFolder, ['.epub', '.txt']);
+                const items = await deepScanFolder(baseUrl, settings.firmwareType, articleFolder, ['.epub', '.txt', '.xtc']);
                 setArticles(items);
             } catch (getError) {
                 console.warn('Failed to load articles:', getError);
@@ -389,10 +389,10 @@ export function DeviceScreen() {
                 {settings.firmwareType === 'crosspoint' && (
                     <View style={styles.section}>
                         <View style={styles.sectionHeader}>
-                        <Text style={styles.sectionTitle}>
-                            🖼️  Screensavers ({screensavers.length})
-                        </Text>
-                    </View>
+                            <Text style={styles.sectionTitle}>
+                                🖼️  Screensavers ({screensavers.length})
+                            </Text>
+                        </View>
                         <Text style={styles.sectionPath}>/sleep/**</Text>
 
                         {loading && screensavers.length === 0 ? (

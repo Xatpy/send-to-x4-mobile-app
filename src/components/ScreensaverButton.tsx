@@ -7,17 +7,27 @@ import {
     Alert,
     View,
 } from 'react-native';
+import Animated, { useAnimatedStyle, withTiming, Easing } from 'react-native-reanimated';
 import * as ImagePicker from 'expo-image-picker';
 
 interface ScreensaverButtonProps {
     connected: boolean;
     onImageSelected: (items: Array<{ uri: string, filename: string, width?: number, height?: number }>) => void;
     loading: boolean;
+    progress?: number;
 }
 
-export function ScreensaverButton({ connected, onImageSelected, loading }: ScreensaverButtonProps) {
+export function ScreensaverButton({ connected, onImageSelected, loading, progress }: ScreensaverButtonProps) {
     // Don't disable if not connected - allow picking to add to queue
     const disabled = loading;
+
+    const fillStyle = useAnimatedStyle(() => {
+        const percent = progress !== undefined ? Math.max(0, Math.min(100, progress)) : 0;
+        return {
+            width: withTiming(`${percent}%`, { duration: 200, easing: Easing.out(Easing.ease) }),
+            opacity: progress !== undefined && progress > 0 ? 1 : 0,
+        };
+    }, [progress]);
 
     const handlePress = async () => {
         try {
@@ -75,14 +85,23 @@ export function ScreensaverButton({ connected, onImageSelected, loading }: Scree
                 disabled={disabled}
                 activeOpacity={0.7}
             >
-                {loading ? (
-                    <ActivityIndicator color="#fff" size="small" style={styles.spinner} />
-                ) : (
-                    <Text style={styles.icon}>🖼️</Text>
+                {/* Progress Fill Background */}
+                {progress !== undefined && (
+                    <Animated.View style={[styles.progressFill, fillStyle]} />
                 )}
-                <Text style={[styles.buttonText, disabled && styles.buttonTextDisabled]}>
-                    {getButtonText()}
-                </Text>
+
+                <View style={styles.content}>
+                    {loading && progress === undefined ? (
+                        <ActivityIndicator color="#fff" size="small" style={styles.spinner} />
+                    ) : (
+                        <Text style={styles.icon}>🖼️</Text>
+                    )}
+                    <Text style={[styles.buttonText, disabled && styles.buttonTextDisabled]}>
+                        {progress !== undefined && progress > 0 && progress < 100
+                            ? `${getButtonText()} (${Math.round(progress)}%)`
+                            : getButtonText()}
+                    </Text>
+                </View>
             </TouchableOpacity>
 
             {!connected && (
@@ -108,6 +127,23 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.3,
         shadowRadius: 8,
         elevation: 6,
+        overflow: 'hidden',
+    },
+    content: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 18,
+        paddingHorizontal: 24,
+        zIndex: 2,
+    },
+    progressFill: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(255, 255, 255, 0.25)',
+        zIndex: 1,
     },
     buttonDisabled: {
         backgroundColor: 'rgba(13, 148, 136, 0.3)',

@@ -10,6 +10,7 @@ import { useShareIntent } from 'expo-share-intent';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { ConnectionProvider, useConnection } from './src/contexts/ConnectionProvider';
+import { ProgressProvider } from './src/contexts/ProgressProvider';
 import { ConnectionBanner } from './src/components/ConnectionBanner';
 import { ArticlesScreen } from './src/screens/ArticlesScreen';
 import { ScreensaversScreen } from './src/screens/ScreensaversScreen';
@@ -267,7 +268,9 @@ export default function App() {
       <SafeAreaProvider onLayout={onLayoutRootView}>
         <StatusBar style="light" />
         <ConnectionProvider>
-          <AppContent />
+          <ProgressProvider>
+            <AppContent />
+          </ProgressProvider>
         </ConnectionProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
