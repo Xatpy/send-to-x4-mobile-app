@@ -59,6 +59,14 @@ interface ArticlesScreenProps {
     onSharedUrlConsumed?: () => void;
 }
 
+function isKnownTwitterHost(hostname: string): boolean {
+    const normalized = hostname.toLowerCase();
+    return normalized === 'twitter.com'
+        || normalized.endsWith('.twitter.com')
+        || normalized === 'x.com'
+        || normalized.endsWith('.x.com');
+}
+
 export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScreenProps) {
     const { settings, connectionStatus, saveSettings } = useConnection();
 
@@ -376,7 +384,7 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
 
         const targetUrl = url.trim();
         const hostname = new URL(targetUrl).hostname;
-        if (hostname.includes('twitter.com') || hostname.includes('x.com')) {
+        if (isKnownTwitterHost(hostname)) {
             setExtractionUrl(targetUrl);
             return;
         }
@@ -406,7 +414,7 @@ export function ArticlesScreen({ sharedUrl, onSharedUrlConsumed }: ArticlesScree
 
         const targetUrl = url.trim();
         const hostname = new URL(targetUrl).hostname;
-        if (hostname.includes('twitter.com') || hostname.includes('x.com')) {
+        if (isKnownTwitterHost(hostname)) {
             setExtractionUrl(targetUrl);
             return;
         }
