@@ -14,8 +14,17 @@ permissions:
   security-events: write
 
 jobs:
+  skip-private:
+    name: Skip On Private Repo
+    if: ${{ github.event.repository.private }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain skip
+        run: echo "Skipping CodeQL because GitHub code scanning is not enabled for this private repository. The workflow will run automatically after the repository is public and code scanning is available."
+
   analyze:
     name: Analyze
+    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
