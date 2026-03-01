@@ -12,15 +12,19 @@ Send to X4 is a mobile app that lets you capture articles, images, and notes fro
 
 ## ✨ Features
 
-- **Share Sheet Integration** — Share any URL from your browser, social media, or news apps directly to Send to X4
-- **Advanced Content Extraction** — Reader mode strips ads and clutter; a specialized engine handles complex pages like X/Twitter threads
-- **EPUB Generation** — Articles are converted into clean, book-like EPUBs on your device
-- **Direct Wi-Fi Transfer** — Files go straight from phone to e-reader, no cloud involved
-- **Screensaver Upload** — Send images as BMP screensavers to your X4
-- **Notes** — Write and send plain-text notes with custom titles
-- **Article Queue** — Save articles for batch sending later, with offline pre-fetch support
-- **Device File Manager** — Browse and delete files on your X4 directly from the app
-- **Dual Firmware Support** — Compatible with both Stock and CrossPoint firmware
+- **Share Sheet Integration** — Share any URL, text snippet, or image directly from other apps into Send to X4.
+- **Advanced Article Extraction** — Strips ads and clutter to extract clean text. Includes a specialized headless-browser engine for rendering X/Twitter threads and preserving article images.
+- **Rich EPUB Generation** — Automatically packages extracted articles into beautiful, book-like EPUBs.
+- **XTC Support** — Native wire-free transfer, formatting, and device management capabilities fully support XTC files.
+- **Rich Note-Taking** — Write customized notes directly in the app and beam them over as plain text (`.txt`) or structured `.epub` documents. Includes custom title support.
+- **Custom Sleep Screen Designer** — Hand-draw your own doodles or create persistent custom designs within the app, then seamlessly beam and apply them as your X4's sleep screen.
+- **Screensaver Image Upload** — Send any image from your gallery directly as a tailored BMP screensaver.
+- **Article Queue & Offline Pre-fetching** — Save articles to a local queue. The app automatically pre-fetches and caches EPUBs, enabling batch-transfers even without an active internet connection.
+- **Smart Date Organization** — Optional automated date-based subfolders (e.g., `yyyy-mm-dd`) keep your growing on-device library beautifully organized.
+- **Print for Hobonichi** — Localized feature that exports content as carefully formatted PDFs suitable for Hobonichi planners.
+- **Direct Wi-Fi Transfer** — Files zip straight from your phone to the e-reader locally. No cloud, no logging, total privacy.
+- **Device File Manager** — Browse, delete, and manage files on your X4 directly from the app.
+- **Dual Firmware Compatibility** — Fully supports both Stock firmware and custom CrossPoint firmware out of the box.
 
 ---
 
@@ -38,7 +42,7 @@ Send to X4 is built with a **privacy-first** architecture:
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) (v18+)
+- [Node.js](https://nodejs.org/) 20.x
 - [Expo CLI](https://docs.expo.dev/get-started/installation/)
 - iOS: Xcode 15+ and CocoaPods
 - Android: Android Studio with SDK 36+
@@ -50,11 +54,14 @@ Send to X4 is built with a **privacy-first** architecture:
 git clone https://github.com/Xatpy/send-to-x4-mobile-app.git
 cd send-to-x4-mobile-app
 
+# Use the supported Node.js version
+nvm use
+
 # Install dependencies
 npm install
 
-# Generate native projects
-npx expo prebuild
+# Generate native projects from your own identifiers
+npx expo prebuild --clean
 
 # Run on iOS
 npx expo run:ios
@@ -121,6 +128,11 @@ This project uses [Expo EAS](https://expo.dev/eas) for builds. Build-time identi
 3. Run `eas init` to create your own project
 4. Set `EAS_PROJECT_ID` in `.env`
 5. Set your bundle ID values (`APP_BUNDLE_ID`, `APP_IOS_APP_GROUP`) in `.env`
+
+Notes:
+
+- The checked-in `ios/` and `android/` folders are development artifacts. Regenerate them with `npx expo prebuild --clean` after setting `.env` so your local bundle identifiers, app group, and signing settings are applied consistently.
+- CI and local tests are supported on Node 20.x. Newer Node majors may fail on tooling transforms outside the app runtime.
 
 ---
 

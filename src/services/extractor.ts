@@ -1,7 +1,5 @@
 import { parseHTML } from 'linkedom';
 import { Readability } from '@mozilla/readability';
-import * as FileSystem from 'expo-file-system/legacy';
-import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import type { Article, ExtractionResult, ArticleImage } from '../types';
 import { generateUuid } from '../utils/sanitizer';
 
@@ -121,7 +119,7 @@ export async function extractArticle(url: string, options?: { includeImages?: bo
         // Readability failed or very short
         else {
             if (__DEV__) {
-                console.log('[Extractor] Readability failed, content too short, or looked like challenge/boilerplate.');
+                if (__DEV__) console.log('[Extractor] Readability failed, content too short, or looked like challenge/boilerplate.');
             }
 
             const { aggressive, aggressiveAssessment } = getAggressive();
@@ -174,6 +172,10 @@ export async function extractArticle(url: string, options?: { includeImages?: bo
  */
 async function processArticleImages(article: Article): Promise<Article> {
     try {
+        const [FileSystem, ImageManipulator] = await Promise.all([
+            import('expo-file-system/legacy'),
+            import('expo-image-manipulator'),
+        ]);
         const { document } = parseHTML(`<!doctype html><html><body>${article.body}</body></html>`);
         const root = document.body;
         const imgTags = Array.from(root.querySelectorAll('img'));
@@ -264,8 +266,8 @@ async function processArticleImages(article: Article): Promise<Article> {
                 } else {
                     // Some EPUB readers on e-ink devices don't render WebP/AVIF reliably.
                     // Transcode unsupported formats to JPEG for broad compatibility.
-                    const converted = await manipulateAsync(tempUri, [], {
-                        format: SaveFormat.JPEG,
+                    const converted = await ImageManipulator.manipulateAsync(tempUri, [], {
+                        format: ImageManipulator.SaveFormat.JPEG,
                         compress: 0.92,
                         base64: true,
                     });
@@ -504,14 +506,14 @@ function extractTwitterFromDocument(document: any, url: string): ExtractionResul
             return { success: false, error: 'Not a valid tweet/thread URL' };
         }
 
-        console.log('[Extractor] Extracting Thread for:', authorHandle);
+        if (__DEV__) console.log('[Extractor] Extracting Thread for:', authorHandle);
 
         // Select tweets
         const tweets = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
         let threadContent: string[] = [];
         let title = '';
 
-        console.log('[Extractor] Found tweets in DOM:', tweets.length);
+        if (__DEV__) console.log('[Extractor] Found tweets in DOM:', tweets.length);
 
         if (tweets.length === 0) {
             return {
@@ -608,7 +610,7 @@ function extractTwitterFromDocument(document: any, url: string): ExtractionResul
 
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error';
-        console.log('[Extractor] Twitter extraction error:', message);
+        if (__DEV__) console.log('[Extractor] Twitter extraction error:', message);
         return { success: false, error: message };
     }
 }

@@ -57,7 +57,7 @@ export async function uploadToStock(
     const baseUrl = getDeviceBaseUrl(ip);
 
     try {
-        console.log(`[Upload] Starting Stock upload: filename=${filename}, dataSize=${epubData.length}, ip=${ip}, folder=${targetFolder}`);
+        if (__DEV__) console.log(`[Upload] Starting Stock upload: filename=${filename}, dataSize=${epubData.length}, ip=${ip}, folder=${targetFolder}`);
 
         // 1. Ensure folder exists
         const folderReady = await ensureFolderExistsStock(ip, targetFolder);
@@ -66,7 +66,7 @@ export async function uploadToStock(
         const path = folderReady
             ? `/${targetFolder}/${filename}`
             : `/${filename}`;
-        console.log(`[Upload] Stock folder ready: ${folderReady}, path: ${path}`);
+        if (__DEV__) console.log(`[Upload] Stock folder ready: ${folderReady}, path: ${path}`);
 
         // 3. Write to temp file
         tempFile = new File(Paths.cache, `upload_stock_${Date.now()}_${filename}`);
@@ -91,7 +91,7 @@ export async function uploadToStock(
         const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
         const uploadUrl = `${baseUrl}/edit`;
-        console.log(`[Upload] Sending Stock POST to: ${uploadUrl}`);
+        if (__DEV__) console.log(`[Upload] Sending Stock POST to: ${uploadUrl}`);
 
         const response = await fetch(uploadUrl, {
             method: 'POST',
@@ -107,7 +107,7 @@ export async function uploadToStock(
         // Log response details
         let responseBody = '';
         try { responseBody = await response.text(); } catch (e) { /* ignore */ }
-        console.log(`[Upload] Stock Response: status=${response.status}, body=${responseBody.substring(0, 500)}`);
+        if (__DEV__) console.log(`[Upload] Stock Response: status=${response.status}, body=${responseBody.substring(0, 500)}`);
 
         if (response.ok) {
             onProgress?.(100);

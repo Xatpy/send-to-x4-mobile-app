@@ -87,7 +87,7 @@ function parseItem(item: string | any): WallpaperItem | null {
 export async function fetchWallpapersPage(offset: number = 0): Promise<WallpaperItem[]> {
     try {
         const url = `${LOWIO_BASE_URL}/api/more${offset > 0 ? `?offset=${offset}` : ''}`;
-        console.log(`[LowioAPI] Fetching ${url}`);
+        if (__DEV__) console.log(`[LowioAPI] Fetching ${url}`);
 
         const response = await fetch(url, { headers: getHeaders() });
 
@@ -127,7 +127,7 @@ export function getRandomWallpaperUrl(format: 'webp' | 'bmp', invert: boolean = 
 export async function fetchRandomWallpaperJSON(): Promise<WallpaperItem> {
     try {
         const url = `https://www.readme.club/api/random-wallpaper`;
-        console.log(`[LowioAPI] Fetching JSON ${url}`);
+        if (__DEV__) console.log(`[LowioAPI] Fetching JSON ${url}`);
 
         const response = await fetch(url, { headers: getHeaders() });
 

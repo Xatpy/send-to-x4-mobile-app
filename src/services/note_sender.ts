@@ -73,7 +73,9 @@ export async function sendNoteAsTxt(
     const ip = getCurrentIp(settings);
     const noteFolder = resolveTargetFolder(getNoteFolder(settings), settings.useDateFolders);
 
-    console.log(`[NoteSender] Sending note: filename=${filename}, size=${data.length} bytes, ip=${ip}, folder=${noteFolder}`);
+    if (__DEV__) {
+        console.log(`[NoteSender] Sending note: filename=${filename}, size=${data.length} bytes, ip=${ip}, folder=${noteFolder}`);
+    }
 
     if (settings.firmwareType === 'crosspoint') {
         return uploadToCrossPoint(ip, data, filename, onProgress, noteFolder);

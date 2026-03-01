@@ -27,9 +27,6 @@ export function QueueList({ queue, onRemove, onShare, disabled, currentUploadPro
             </View>
         );
     }
-
-    console.log('[QueueList] Rendering items:', queue.length, JSON.stringify(queue.map(i => ({ id: i.id, title: i.title, url: i.url }))));
-
     return (
         <View style={styles.container}>
             {queue.map((item, index) => (

@@ -2,12 +2,16 @@
   "name": "send-to-x4-mobile-app",
   "version": "1.1.20",
   "main": "index.ts",
+  "engines": {
+    "node": ">=20 <21"
+  },
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
     "bump-version": "node scripts/bump_version.js",
+    "typecheck": "tsc --noEmit",
     "test:extractor-regressions": "node --import tsx --test scripts/extractor.regression.test.js",
     "test:extractor-integration": "node --import tsx --test scripts/extractor.integration.test.js",
     "test:epub-sanitizer": "node --import tsx --test scripts/epub-sanitizer.regression.test.js",

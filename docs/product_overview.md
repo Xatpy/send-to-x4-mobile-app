@@ -21,22 +21,30 @@ Send to X4 transforms the chaotic experience of reading on a smartphone into the
 
 ## ✨ Key Features
 
-### 1. Seamless "Share to X4"
-Integrated directly into the OS share sheet. Users never have to manually copy-paste URLs (though they can). From Chrome, Safari, or the X app, it's just **Share > Send to X4**.
+### 1. Seamless OS Integration ("Share to X4")
+Integrated directly into the iOS/Android share sheet. Users never have to manually copy-paste URLs (though they can). You can easily share web links, highlighted text snippets, and images directly from Safari, Chrome, or the X app simply by tapping **Share > Send to X4**.
 
 ### 2. Advanced Content Extraction
-- **Reader Mode**: Strips ads, popups, and clutter from standard processing.
+- **Reader Mode**: Strips ads, popups, and clutter from standard processing to deliver a clean reading experience.
 - **Specialized Twitter/X Engine**: Uses a custom, headless browser approach to fully render and capture long text posts, threads, and media that standard scrapers miss.
+- **Image Preservation**: Automatically downloads and embeds inline article images directly into the final EPUBs.
 
-### 3. Direct WiFi Transfer
-- **No Cloud Required**: Files go straight from phone to device.
-- **Privacy First**: Your reading habits aren't tracked on a server.
-- **Universal Support**: Compatible with both **Stock** firmware and **CrossPoint** open-source firmware.
+### 3. File Support & Organization (EPUB, XTC, Notes)
+- **Rich EPUBs**: Articles are smartly packaged into polished e-books.
+- **XTC Support**: Full transfer, processing, and management support for `.xtc` formats.
+- **Custom Notes**: Users can write quick notes, add titles, and send them as either simple Text files or styled EPUBs.
+- **Article Queue & Pre-fetching**: Stack up articles for later reading. The app pre-downloads the content for offline batch-sending when reconnected to the X4.
+- **Subfolders**: Optional date-based auto-organization groups files logically on the device.
 
-### 4. Integrated File Manager
-- View the files currently on your X4 device.
-- Delete old articles directly from the app.
-- Auto-refresh ensures your view is always in sync with the device.
+### 4. Custom Doodles & Screensavers
+- **Sleep Screen Designer**: Provides an interactive canvas to draw custom designs and "doodles." Supports saving designs locally so users can tweak recurring layouts.
+- **Image Uploads**: Converts phone gallery pictures into Stock-compatible `.bmp` screensavers on the fly. 
+
+### 5. Direct WiFi Transfer & Management
+- **No Cloud Required**: Files go straight from phone to device over the local network.
+- **Integrated File Manager**: A robust UI to browse and delete files currently taking up space on the X4.
+- **Privacy First**: Reading habits are completely shielded from servers.
+- **Universal Support**: First-class compatibility with both **Stock** and **CrossPoint** firmwares.
 
 ---
 

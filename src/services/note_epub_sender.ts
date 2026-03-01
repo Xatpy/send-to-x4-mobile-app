@@ -62,7 +62,9 @@ export async function sendNoteAsEpub(
     const ip = getCurrentIp(settings);
     const articleFolder = resolveTargetFolder(getArticleFolder(settings), settings.useDateFolders);
 
-    console.log(`[NoteEpubSender] Sending note as EPUB: filename=${filename}, size=${epub.data.length} bytes`);
+    if (__DEV__) {
+        console.log(`[NoteEpubSender] Sending note as EPUB: filename=${filename}, size=${epub.data.length} bytes`);
+    }
 
     if (settings.firmwareType === 'crosspoint') {
         return uploadToCrossPoint(ip, epub.data, filename, onProgress, articleFolder);

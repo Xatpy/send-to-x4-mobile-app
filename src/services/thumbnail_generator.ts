@@ -36,7 +36,7 @@ export async function generateAndSaveThumbnail(sourceUri: string, targetFilename
         // doesn't show a stale cached version when the same filename is overwritten
         await savePreviewMapping(targetFilename, `${finalUri}?t=${Date.now()}`);
 
-        console.log(`[Thumbnail] Cached ${targetFilename} -> ${finalUri}`);
+        if (__DEV__) console.log(`[Thumbnail] Cached ${targetFilename} -> ${finalUri}`);
     } catch (e) {
         console.warn(`[Thumbnail] Failed to generate thumbnail for ${targetFilename}`, e);
     }

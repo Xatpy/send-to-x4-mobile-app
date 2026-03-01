@@ -6,7 +6,7 @@ Thanks for your interest in contributing! Whether it's a bug report, feature ide
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) v18+
+- [Node.js](https://nodejs.org/) 20.x
 - [Expo CLI](https://docs.expo.dev/get-started/installation/)
 - iOS: Xcode 15+ with CocoaPods
 - Android: Android Studio with SDK 36+
@@ -16,9 +16,10 @@ Thanks for your interest in contributing! Whether it's a bug report, feature ide
 ```bash
 git clone https://github.com/Xatpy/send-to-x4-mobile-app.git
 cd send-to-x4-mobile-app
+nvm use
 npm install
 cp .env.example .env
-npx expo prebuild
+npx expo prebuild --clean
 ```
 
 ### EAS Configuration
@@ -29,6 +30,8 @@ Build-time identifiers are loaded from `.env` by `app.config.ts`. To build your 
 2. Run `eas init` to create your own project
 3. Set `EAS_PROJECT_ID` in `.env`
 4. Set your own `APP_BUNDLE_ID` and `APP_IOS_APP_GROUP` values in `.env`
+
+The checked-in `ios/` and `android/` folders should be treated as generated output. After changing identifiers, regenerate them with `npx expo prebuild --clean`.
 
 ## Running & Testing
 
@@ -42,6 +45,9 @@ npx expo run:android
 
 # Run tests
 npm run test:all
+
+# Run the type checker
+npm run typecheck
 ```
 
 ## Submitting Changes

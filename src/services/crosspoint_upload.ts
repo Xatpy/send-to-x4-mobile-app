@@ -59,7 +59,7 @@ async function uploadViaWebSocket(
 ): Promise<UploadResult> {
     return new Promise((resolve) => {
         const wsUrl = `ws://${ip}:81/`;
-        console.log(`[WS] Connecting to ${wsUrl}`);
+        if (__DEV__) console.log(`[WS] Connecting to ${wsUrl}`);
         const ws = new WebSocket(wsUrl);
 
         let serverAcked = 0;
@@ -73,7 +73,7 @@ async function uploadViaWebSocket(
         }, TIMEOUT_MS);
 
         ws.onopen = () => {
-            console.log(`[WS] Connected. Sending START command for ${filename} (${data.length} bytes)`);
+            if (__DEV__) console.log(`[WS] Connected. Sending START command for ${filename} (${data.length} bytes)`);
             ws.send(`START:${filename}:${data.length}:${targetPath}`);
         };
 
@@ -163,7 +163,7 @@ async function uploadViaWebSocket(
         };
 
         ws.onclose = (e) => {
-            console.log(`[WS] Closed: ${e.code} ${e.reason}`);
+            if (__DEV__) console.log(`[WS] Closed: ${e.code} ${e.reason}`);
             // If we haven't resolved yet (e.g. abrupt close without DONE), resolve as fail
             // But we need to track if we already resolved.
             // Since Promise can only resolve once, calling resolve again does nothing.
@@ -181,7 +181,7 @@ export async function uploadToCrossPoint(
 ): Promise<UploadResult> {
     try {
         const resolvedIp = getDeviceHostForRuntime(ip);
-        console.log(`[Upload] Starting CrossPoint upload (WS): filename=${filename}, dataSize=${epubData.length}, ip=${resolvedIp}, folder=${targetFolder}`);
+        if (__DEV__) console.log(`[Upload] Starting CrossPoint upload (WS): filename=${filename}, dataSize=${epubData.length}, ip=${resolvedIp}, folder=${targetFolder}`);
 
         // 1. Ensure folder exists (HTTP fallback for mkdir is fine)
         await ensureFolderExistsCrossPoint(resolvedIp, targetFolder);
@@ -207,11 +207,11 @@ export async function uploadLocalFileToCrossPoint(
 ): Promise<UploadResult> {
     try {
         const resolvedIp = getDeviceHostForRuntime(ip);
-        console.log(`[Upload] Starting local file upload (WS): filename=${filename}, fileUri=${fileUri}, ip=${resolvedIp}, folder=${targetFolder}`);
+        if (__DEV__) console.log(`[Upload] Starting local file upload (WS): filename=${filename}, fileUri=${fileUri}, ip=${resolvedIp}, folder=${targetFolder}`);
 
         // 1. Ensure folder exists
         const folderReady = await ensureFolderExistsCrossPoint(resolvedIp, targetFolder);
-        console.log(`[Upload] Folder ready: ${folderReady}`);
+        if (__DEV__) console.log(`[Upload] Folder ready: ${folderReady}`);
 
         // 2. Read file as Base64 (using Expo FileSystem Legacy)
         // Note: This reads entire file into memory. For very large files this might be an issue,
@@ -222,7 +222,7 @@ export async function uploadLocalFileToCrossPoint(
 
         // 3. Convert to Uint8Array
         const data = base64ToUint8Array(base64);
-        console.log(`[Upload] Read local file: ${data.length} bytes`);
+        if (__DEV__) console.log(`[Upload] Read local file: ${data.length} bytes`);
 
         // 4. Upload via WebSocket
         return await uploadViaWebSocket(resolvedIp, filename, data, `/${targetFolder}`, onProgress);
@@ -449,7 +449,7 @@ export async function uploadScreensaverToCrossPoint(
             };
         }
 
-        console.log(`[Upload] Uploading screensaver (WS): ${filename}, ip=${resolvedIp}`);
+        if (__DEV__) console.log(`[Upload] Uploading screensaver (WS): ${filename}, ip=${resolvedIp}`);
 
         // Upload via WebSocket
         return await uploadViaWebSocket(resolvedIp, filename, bmpData, `/${SLEEP_FOLDER}`, onProgress);
