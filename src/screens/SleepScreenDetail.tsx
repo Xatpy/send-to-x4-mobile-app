@@ -206,7 +206,10 @@ export function SleepScreenDetail({ navigation, route }: any) {
         if (imageLoading) return;
         setImageLoading(true);
         try {
-            const nextItem = await fetchRandomWallpaperJSON();
+            const nextItem = await fetchRandomWallpaperJSON({
+                hideAiWallpapers: settings.hideAiWallpapers,
+                hideSensitiveWallpapers: settings.hideSensitiveWallpapers,
+            });
             setCurrentItem(nextItem);
         } catch (err: any) {
             Alert.alert('Error', err.message || 'Failed to fetch next random wallpaper');

@@ -9,6 +9,8 @@ const DEFAULTS: Settings = {
     noteFolder: 'notes',
     useDateFolders: false,
     includeImagesInArticles: false,
+    hideAiWallpapers: false,
+    hideSensitiveWallpapers: false,
 };
 
 const STORAGE_KEY = '@send-to-x4/settings';

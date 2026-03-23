@@ -37,6 +37,8 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
         noteFolder: 'notes',
         useDateFolders: false,
         includeImagesInArticles: false,
+        hideAiWallpapers: false,
+        hideSensitiveWallpapers: false,
     });
 
     const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({

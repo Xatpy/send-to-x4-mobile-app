@@ -15,6 +15,7 @@ import {
     ScrollView,
     Switch,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 
 import { useConnection } from '../contexts/ConnectionProvider';
 import { StatusIndicator } from '../components/StatusIndicator';
@@ -22,6 +23,7 @@ import { getDefaultIp, getDefaultFolder } from '../services/settings';
 import Constants from 'expo-constants';
 
 export function SettingsScreen() {
+    const navigation = useNavigation<any>();
     const { settings, connectionStatus, saveSettings, checkConnection } = useConnection();
 
     const [localFirmwareType, setLocalFirmwareType] = useState(settings.firmwareType);
@@ -29,6 +31,8 @@ export function SettingsScreen() {
     const [localCrossPointIp, setLocalCrossPointIp] = useState(settings.crossPointIp);
     const [localArticleFolder, setLocalArticleFolder] = useState(settings.articleFolder);
     const [localNoteFolder, setLocalNoteFolder] = useState(settings.noteFolder);
+    const [localHideAiWallpapers, setLocalHideAiWallpapers] = useState(settings.hideAiWallpapers);
+    const [localHideSensitiveWallpapers, setLocalHideSensitiveWallpapers] = useState(settings.hideSensitiveWallpapers);
     const [hasChanges, setHasChanges] = useState(false);
 
     // Sync when settings change externally
@@ -38,6 +42,8 @@ export function SettingsScreen() {
         setLocalCrossPointIp(settings.crossPointIp);
         setLocalArticleFolder(settings.articleFolder);
         setLocalNoteFolder(settings.noteFolder);
+        setLocalHideAiWallpapers(settings.hideAiWallpapers);
+        setLocalHideSensitiveWallpapers(settings.hideSensitiveWallpapers);
         setHasChanges(false);
     }, [settings]);
 
@@ -70,9 +76,11 @@ export function SettingsScreen() {
             noteFolder: localNoteFolder,
             useDateFolders: settings.useDateFolders,
             includeImagesInArticles: settings.includeImagesInArticles,
+            hideAiWallpapers: localHideAiWallpapers,
+            hideSensitiveWallpapers: localHideSensitiveWallpapers,
         });
         setHasChanges(false);
-    }, [localFirmwareType, localStockIp, localCrossPointIp, localArticleFolder, localNoteFolder, settings.useDateFolders, settings.includeImagesInArticles, saveSettings]);
+    }, [localFirmwareType, localStockIp, localCrossPointIp, localArticleFolder, localNoteFolder, localHideAiWallpapers, localHideSensitiveWallpapers, settings.useDateFolders, settings.includeImagesInArticles, saveSettings]);
 
     const handleResetIp = () => {
         const defaultIp = getDefaultIp(localFirmwareType);
@@ -96,6 +104,17 @@ export function SettingsScreen() {
                 contentContainerStyle={styles.contentContainer}
                 keyboardShouldPersistTaps="handled"
             >
+                <View style={styles.header}>
+                    <Text style={styles.headerTitle}>Settings</Text>
+                    <TouchableOpacity
+                        style={styles.closeButton}
+                        onPress={() => navigation.goBack()}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                        <Text style={styles.closeButtonText}>✕</Text>
+                    </TouchableOpacity>
+                </View>
+
                 {/* Connection Status */}
                 <View style={styles.statusSection}>
                     <StatusIndicator
@@ -161,6 +180,40 @@ export function SettingsScreen() {
                 <Text style={styles.helpText}>
                     Default: {getDefaultIp(localFirmwareType)} ({localFirmwareType === 'crosspoint' ? 'CrossPoint' : 'Stock'})
                 </Text>
+
+                <Text style={styles.sectionTitle}>Wallpaper Filters</Text>
+
+                <View style={styles.switchRow}>
+                    <View style={styles.switchLabelWrap}>
+                        <Text style={styles.switchLabel}>Hide AI content</Text>
+                        <Text style={styles.switchHelp}>Exclude AI-generated wallpapers from random picks</Text>
+                    </View>
+                    <Switch
+                        value={localHideAiWallpapers}
+                        onValueChange={(value) => {
+                            setLocalHideAiWallpapers(value);
+                            setHasChanges(true);
+                        }}
+                        trackColor={{ false: '#333', true: '#6c63ff' }}
+                        thumbColor={localHideAiWallpapers ? '#fff' : '#888'}
+                    />
+                </View>
+
+                <View style={styles.switchRow}>
+                    <View style={styles.switchLabelWrap}>
+                        <Text style={styles.switchLabel}>Hide sensitive content</Text>
+                        <Text style={styles.switchHelp}>Skip wallpapers flagged as sensitive or adult</Text>
+                    </View>
+                    <Switch
+                        value={localHideSensitiveWallpapers}
+                        onValueChange={(value) => {
+                            setLocalHideSensitiveWallpapers(value);
+                            setHasChanges(true);
+                        }}
+                        trackColor={{ false: '#333', true: '#6c63ff' }}
+                        thumbColor={localHideSensitiveWallpapers ? '#fff' : '#888'}
+                    />
+                </View>
 
                 {/* Storage Folders */}
                 <Text style={styles.sectionTitle}>Storage Folders</Text>
@@ -253,6 +306,28 @@ const styles = StyleSheet.create({
     contentContainer: {
         padding: 20,
         paddingBottom: 40,
+    },
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 20,
+    },
+    headerTitle: {
+        color: '#fff',
+        fontSize: 28,
+        fontWeight: '700',
+    },
+    closeButton: {
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        borderRadius: 999,
+        backgroundColor: '#2d2d44',
+    },
+    closeButtonText: {
+        color: '#fff',
+        fontSize: 13,
+        fontWeight: '700',
     },
     statusSection: {
         marginBottom: 8,

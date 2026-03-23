@@ -45,6 +45,8 @@ export interface Settings {
   noteFolder: string;
   useDateFolders: boolean;
   includeImagesInArticles: boolean;
+  hideAiWallpapers: boolean;
+  hideSensitiveWallpapers: boolean;
 }
 
 // Connection status

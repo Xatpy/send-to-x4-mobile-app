@@ -4,6 +4,7 @@ import {
     ActivityIndicator, Image, Dimensions, Platform, RefreshControl
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useConnection } from '../contexts/ConnectionProvider';
 import { fetchWallpapersPage, WallpaperItem, fetchRandomWallpaperJSON } from '../services/lowioWallpapers';
 
 // Basic usage of Dimensions to adjust grid items
@@ -15,6 +16,7 @@ const ITEM_WIDTH = (width - (NUM_COLUMNS + 1) * ITEM_MARGIN) / NUM_COLUMNS;
 
 export function SleepScreensScreen({ navigation }: any) {
     const insets = useSafeAreaInsets();
+    const { settings } = useConnection();
 
     const [items, setItems] = useState<WallpaperItem[]>([]);
     const [loading, setLoading] = useState(true);
@@ -74,7 +76,10 @@ export function SleepScreensScreen({ navigation }: any) {
         if (randomLoading) return;
         setRandomLoading(true);
         try {
-            const randomItem = await fetchRandomWallpaperJSON();
+            const randomItem = await fetchRandomWallpaperJSON({
+                hideAiWallpapers: settings.hideAiWallpapers,
+                hideSensitiveWallpapers: settings.hideSensitiveWallpapers,
+            });
             navigation.navigate('SleepScreenDetail', {
                 item: randomItem,
                 isRandom: true
