@@ -91,6 +91,15 @@ function MainTabs({ sharedUrl, setSharedUrl, sharedText, setSharedText, sharedIm
         </Tab.Screen>
 
         <Tab.Screen
+          name="Design"
+          component={SleepScreenTab}
+          options={{
+            tabBarIcon: ({ focused }) => <TabIcon label="🎨" focused={focused} />,
+            tabBarLabelStyle: { fontSize: 9, fontWeight: '600' }
+          }}
+        />
+
+        <Tab.Screen
           name="Images"
           options={{
             tabBarIcon: ({ focused }) => <TabIcon label="🖼️" focused={focused} />,
@@ -103,15 +112,6 @@ function MainTabs({ sharedUrl, setSharedUrl, sharedText, setSharedText, sharedIm
             />
           )}
         </Tab.Screen>
-
-        <Tab.Screen
-          name="Design"
-          component={SleepScreenTab}
-          options={{
-            tabBarIcon: ({ focused }) => <TabIcon label="🎨" focused={focused} />,
-            tabBarLabelStyle: { fontSize: 9, fontWeight: '600' }
-          }}
-        />
 
         <Tab.Screen
           name="x4ePapers"
