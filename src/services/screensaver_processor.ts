@@ -4,11 +4,26 @@ import { convertImageToScreensaverBmp } from './image_converter';
 import { uploadScreensaverToCrossPoint } from './crosspoint_upload';
 import { getCurrentIp } from './settings';
 import { generateAndSaveThumbnail } from './thumbnail_generator';
+import * as FileSystem from 'expo-file-system/legacy';
 
 export interface ScreensaverDumpResult {
     total: number;
     succeeded: number;
     failed: { id: string; filename: string; error: string }[];
+}
+
+// Helper: read a local file as Uint8Array
+async function readFileAsUint8Array(uri: string): Promise<Uint8Array> {
+    const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+    });
+    const binaryString = atob(base64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
 }
 
 /**
@@ -38,25 +53,35 @@ export async function processScreensaverQueue(
         try {
             await updateScreensaverStatus(item.id, 'processing');
 
-            // 1. Convert to BMP
-            const bmp = await convertImageToScreensaverBmp(item.uri, item.width, item.height);
+            let bmpData: Uint8Array;
+            let bmpFilename: string;
 
-            // 2. Upload
-            // Currently we only support uploading to CrossPoint /sleep folder for screensavers
-            // If user is on Stock, this feature might not work or needs Stock implementation.
-            // Assuming CrossPoint for now based on previous context.
+            if (item.isPreDownloaded) {
+                // Pre-downloaded BMP (from x4papers) — read directly
+                bmpData = await readFileAsUint8Array(item.uri);
+                bmpFilename = item.filename;
+            } else {
+                // Gallery image — convert to BMP
+                const bmp = await convertImageToScreensaverBmp(item.uri, item.width, item.height);
+                bmpData = bmp.data;
+                bmpFilename = bmp.filename;
+            }
+
+            // Upload
             let uploadResult: UploadResult = { success: false, error: 'Firmware not supported' };
 
             if (settings.firmwareType === 'crosspoint') {
-                uploadResult = await uploadScreensaverToCrossPoint(ip, bmp.data, item.filename, onUploadProgress);
+                uploadResult = await uploadScreensaverToCrossPoint(ip, bmpData, bmpFilename, onUploadProgress);
             } else {
                 // TODO: Implement Stock upload if needed, or fallback
                 uploadResult = { success: false, error: 'Screensaver upload only supported on CrossPoint' };
             }
 
             if (uploadResult.success) {
-                // Generate a local thumbnail mapping for the sent item
-                await generateAndSaveThumbnail(item.uri, item.filename);
+                // Generate a local thumbnail mapping for the sent item.
+                // Always use item.uri (local file) because manipulateAsync
+                // requires a local URI, not a remote URL.
+                await generateAndSaveThumbnail(item.uri, bmpFilename);
 
                 await updateScreensaverStatus(item.id, 'success');
                 succeeded++;
@@ -73,3 +98,4 @@ export async function processScreensaverQueue(
 
     return { total, succeeded, failed };
 }
+

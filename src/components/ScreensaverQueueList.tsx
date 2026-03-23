@@ -39,7 +39,7 @@ export function ScreensaverQueueList({ queue, onRemove, disabled }: ScreensaverQ
                         item.status === 'success' && styles.itemSuccess,
                     ]}>
                         {/* Thumbnail */}
-                        <Image source={{ uri: item.uri }} style={styles.thumbnail} />
+                        <Image source={{ uri: item.sourceUrl || item.uri }} style={styles.thumbnail} />
 
                         <View style={styles.itemContent}>
                             <View style={styles.itemHeader}>

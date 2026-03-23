@@ -17,7 +17,7 @@ import {
     TouchableOpacity,
     ActivityIndicator,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 
 import { useConnection } from '../contexts/ConnectionProvider';
 import { useProgress } from '../contexts/ProgressProvider';
@@ -61,10 +61,12 @@ export function ScreensaversScreen({ sharedImage, onSharedImageConsumed }: Scree
 
     const { progress: globalProgress, startUpload, setProgress, finishUpload, failUpload } = useProgress();
 
-    // Load queue on mount
-    useEffect(() => {
-        loadQueue();
-    }, []);
+    // Reload queue every time this tab gains focus
+    useFocusEffect(
+        useCallback(() => {
+            loadQueue();
+        }, [])
+    );
 
     const loadQueue = async () => {
         const items = await getScreensaverQueue();
