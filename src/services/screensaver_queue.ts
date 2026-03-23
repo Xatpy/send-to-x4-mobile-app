@@ -1,7 +1,22 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { deleteAsync } from 'expo-file-system/legacy';
 import type { QueuedScreensaver } from '../types';
 
 const STORAGE_KEY = '@send-to-x4/screensaver-queue';
+
+/**
+ * Delete the locally cached BMP file for a pre-downloaded queue item.
+ * Only deletes files we own (isPreDownloaded); gallery URIs are left alone.
+ */
+async function cleanupLocalFile(item: QueuedScreensaver): Promise<void> {
+    if (item.isPreDownloaded && item.uri) {
+        try {
+            await deleteAsync(item.uri, { idempotent: true });
+        } catch (e) {
+            console.warn(`[ScreensaverQueue] Failed to delete cached file ${item.uri}`, e);
+        }
+    }
+}
 
 /**
  * Get the current screensaver queue
@@ -25,7 +40,9 @@ export async function addToScreensaverQueue(
     uri: string,
     filename: string,
     width?: number,
-    height?: number
+    height?: number,
+    sourceUrl?: string,
+    isPreDownloaded?: boolean
 ): Promise<QueuedScreensaver> {
     const queue = await getScreensaverQueue();
 
@@ -41,6 +58,8 @@ export async function addToScreensaverQueue(
         height,
         addedAt: Date.now(),
         status: 'pending',
+        sourceUrl,
+        isPreDownloaded,
     };
 
     const newQueue = [newItem, ...queue]; // Add to top
@@ -53,6 +72,10 @@ export async function addToScreensaverQueue(
  */
 export async function removeFromScreensaverQueue(id: string): Promise<void> {
     const queue = await getScreensaverQueue();
+    const item = queue.find(i => i.id === id);
+    if (item) {
+        await cleanupLocalFile(item);
+    }
     const newQueue = queue.filter(item => item.id !== id);
     await saveQueue(newQueue);
 }
@@ -79,6 +102,9 @@ export async function updateScreensaverStatus(
  * Clear the entire queue
  */
 export async function clearScreensaverQueue(): Promise<void> {
+    const queue = await getScreensaverQueue();
+    // Clean up all locally cached BMP files before clearing
+    await Promise.all(queue.map(item => cleanupLocalFile(item)));
     await AsyncStorage.removeItem(STORAGE_KEY);
 }
 

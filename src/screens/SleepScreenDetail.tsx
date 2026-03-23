@@ -9,6 +9,8 @@ import Animated, { useAnimatedStyle, withTiming, Easing } from 'react-native-rea
 import { getCurrentIp } from '../services/settings';
 import { addRecentWallpaper } from '../services/wallpaper_storage';
 import { savePreviewMapping } from '../services/preview_cache';
+import { addToScreensaverQueue } from '../services/screensaver_queue';
+import * as FileSystem from 'expo-file-system/legacy';
 
 // Floating Circular Icon Button
 function FloatingIconButton({ icon, active, onPress, position }: { icon: string, active: boolean, onPress: () => void, position: 'left' | 'right' }) {
@@ -40,6 +42,7 @@ export function SleepScreenDetail({ navigation, route }: any) {
     const [dither, setDither] = useState(false);
 
     const [sending, setSending] = useState(false);
+    const [queueing, setQueueing] = useState(false);
     const { connectionStatus, settings } = useConnection();
     const { progress: globalProgress, startUpload, setProgress, finishUpload, failUpload } = useProgress();
 
@@ -136,6 +139,66 @@ export function SleepScreenDetail({ navigation, route }: any) {
             Alert.alert('Error', message);
         } finally {
             setSending(false);
+        }
+    };
+
+    const handleAddToQueue = async () => {
+        try {
+            setQueueing(true);
+
+            // Build the final download URL with invert/dither params
+            let finalOutputUrl = currentItem.bmpUrl;
+            if (invert || dither) {
+                const params = new URLSearchParams();
+                if (invert) params.append('invert', 'true');
+                if (dither) params.append('dither', 'true');
+                const sep = finalOutputUrl.includes('?') ? '&' : '?';
+                finalOutputUrl = `${finalOutputUrl}${sep}${params.toString()}`;
+            }
+
+            // Download BMP to local storage
+            const bmpBytes = await downloadWallpaperBmp(finalOutputUrl);
+            const safeHash = currentItem.hash.replace(/[^a-zA-Z0-9]/g, '_');
+            const filename = `lowio_${safeHash}_${Date.now()}.bmp`;
+            const localUri = `${FileSystem.documentDirectory}screensaver_queue_${filename}`;
+
+            // Write BMP bytes to local file
+            let binary = '';
+            for (let i = 0; i < bmpBytes.length; i++) {
+                binary += String.fromCharCode(bmpBytes[i]);
+            }
+            const b64 = btoa(binary);
+            await FileSystem.writeAsStringAsync(localUri, b64, {
+                encoding: FileSystem.EncodingType.Base64,
+            });
+
+            // Build preview URL with the same invert/dither params so the
+            // queue list thumbnail and post-upload preview match the actual BMP
+            let previewUrl = currentItem.webpUrl;
+            if (invert || dither) {
+                const previewParams = new URLSearchParams();
+                if (invert) previewParams.append('invert', 'true');
+                if (dither) previewParams.append('dither', 'true');
+                const sep = previewUrl.includes('?') ? '&' : '?';
+                previewUrl = `${previewUrl}${sep}${previewParams.toString()}`;
+            }
+
+            // Add to screensaver queue with source URL for preview
+            await addToScreensaverQueue(
+                localUri,
+                filename,
+                undefined, // width
+                undefined, // height
+                previewUrl, // sourceUrl for thumbnail preview (with invert/dither)
+                true // isPreDownloaded
+            );
+
+            Alert.alert('Added to Queue ✓', `"${currentItem.title || 'Wallpaper'}" is ready to send later from the Images tab.`);
+        } catch (error: any) {
+            const message = error.message || 'Failed to download wallpaper';
+            Alert.alert('Error', message);
+        } finally {
+            setQueueing(false);
         }
     };
 
@@ -247,12 +310,27 @@ export function SleepScreenDetail({ navigation, route }: any) {
 
                     <TouchableOpacity
                         style={[
+                            styles.queueButton,
+                            (queueing || sending) && styles.sendButtonDisabled,
+                        ]}
+                        onPress={handleAddToQueue}
+                        disabled={queueing || sending}
+                    >
+                        {queueing ? (
+                            <ActivityIndicator color="#6c63ff" size="small" />
+                        ) : (
+                            <Text style={styles.queueButtonText}>+ Queue</Text>
+                        )}
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={[
                             styles.sendButton,
-                            (!connectionStatus.connected || sending) && styles.sendButtonDisabled,
+                            (!connectionStatus.connected || sending || queueing) && styles.sendButtonDisabled,
                             isRandom && styles.sendButtonFlex
                         ]}
                         onPress={handleSend}
-                        disabled={!connectionStatus.connected || sending}
+                        disabled={!connectionStatus.connected || sending || queueing}
                     >
                         {sending && globalProgress !== undefined && (
                             <Animated.View style={[styles.progressFill, fillStyle]} />
@@ -426,6 +504,21 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         gap: 12,
         marginBottom: 16,
+    },
+    queueButton: {
+        paddingVertical: 14,
+        paddingHorizontal: 18,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: '#6c63ff',
+        backgroundColor: 'transparent',
+    },
+    queueButtonText: {
+        color: '#6c63ff',
+        fontSize: 15,
+        fontWeight: '700',
     },
     nextRandomButton: {
         flex: 1,

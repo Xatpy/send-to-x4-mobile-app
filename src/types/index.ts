@@ -105,4 +105,6 @@ export interface QueuedScreensaver {
   addedAt: number;
   status: 'pending' | 'processing' | 'failed' | 'success';
   error?: string;
+  sourceUrl?: string;        // webp preview URL (for x4papers items)
+  isPreDownloaded?: boolean; // true if uri already points to a ready-to-upload BMP
 }
