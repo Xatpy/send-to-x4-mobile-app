@@ -1,6 +1,6 @@
 {
   "name": "send-to-x4-mobile-app",
-  "version": "1.1.20",
+  "version": "1.1.21",
   "main": "index.ts",
   "engines": {
     "node": ">=20 <21"

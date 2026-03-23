@@ -43,6 +43,7 @@ export interface CanvasElement {
     scale: number;
     rotation: number;
     zIndex: number;
+    locked: boolean;
 }
 
 export function SleepScreenTab() {
@@ -146,6 +147,7 @@ export function SleepScreenTab() {
             scale: 2,
             rotation: 0,
             zIndex: elements.length,
+            locked: false,
         };
         setElements([...elements, newEl]);
         setSelectedId(newEl.id);
@@ -162,6 +164,7 @@ export function SleepScreenTab() {
             scale: 1,
             rotation: 0,
             zIndex: elements.length,
+            locked: false,
         };
         setElements([...elements, newEl]);
         setSelectedId(newEl.id);
@@ -198,6 +201,7 @@ export function SleepScreenTab() {
                     scale: 1,
                     rotation: 0,
                     zIndex: elements.length,
+                    locked: false,
                 };
                 setElements([...elements, newEl]);
                 setSelectedId(newEl.id);
@@ -221,9 +225,50 @@ export function SleepScreenTab() {
                 console.warn('Failed to delete image file', e);
             }
         }
-        setElements(prev => prev.filter(el => el.id !== id));
+        // Remove and re-normalize zIndex to sequential 0..n-1
+        setElements(prev => {
+            const remaining = prev.filter(el => el.id !== id);
+            const sorted = [...remaining].sort((a, b) => a.zIndex - b.zIndex);
+            const idToZ = new Map(sorted.map((el, i) => [el.id, i]));
+            return remaining.map(el => ({ ...el, zIndex: idToZ.get(el.id)! }));
+        });
         if (selectedId === id) setSelectedId(null);
         if (editingTextId === id) setEditingTextId(null);
+    };
+
+    const handleToggleLock = (id: string) => {
+        setElements(prev => prev.map(el => el.id === id ? { ...el, locked: !el.locked } : el));
+    };
+
+    const handleBringForward = (id: string) => {
+        setElements(prev => {
+            // Normalize to sequential indices first, then swap
+            const sorted = [...prev].sort((a, b) => a.zIndex - b.zIndex);
+            const idx = sorted.findIndex(el => el.id === id);
+            if (idx < 0 || idx >= sorted.length - 1) return prev;
+            // Swap positions in sorted order
+            const swappedId = sorted[idx + 1].id;
+            // Assign sequential zIndex but with these two swapped
+            const idToZ = new Map<string, number>();
+            sorted.forEach((el, i) => idToZ.set(el.id, i));
+            idToZ.set(id, idx + 1);
+            idToZ.set(swappedId, idx);
+            return prev.map(el => ({ ...el, zIndex: idToZ.get(el.id)! }));
+        });
+    };
+
+    const handleSendBackward = (id: string) => {
+        setElements(prev => {
+            const sorted = [...prev].sort((a, b) => a.zIndex - b.zIndex);
+            const idx = sorted.findIndex(el => el.id === id);
+            if (idx <= 0) return prev;
+            const swappedId = sorted[idx - 1].id;
+            const idToZ = new Map<string, number>();
+            sorted.forEach((el, i) => idToZ.set(el.id, i));
+            idToZ.set(id, idx - 1);
+            idToZ.set(swappedId, idx);
+            return prev.map(el => ({ ...el, zIndex: idToZ.get(el.id)! }));
+        });
     };
 
     const handleClear = () => {
@@ -420,6 +465,9 @@ export function SleepScreenTab() {
                                 onDelete={() => removeElement(el.id)}
                                 onEdit={() => { if (el.type === 'text' || el.type === 'sign') setEditingTextId(el.id); }}
                                 onChange={(updates) => updateElement(el.id, updates)}
+                                onToggleLock={() => handleToggleLock(el.id)}
+                                onBringForward={() => handleBringForward(el.id)}
+                                onSendBackward={() => handleSendBackward(el.id)}
                             />
                         ))}
                         {/* Drawing Layer Overlay - Intercepts touches over everything when active */}
@@ -534,6 +582,9 @@ interface DraggableElementProps {
     onDelete: () => void;
     onEdit: () => void;
     onChange: (updates: Partial<CanvasElement>) => void;
+    onToggleLock: () => void;
+    onBringForward: () => void;
+    onSendBackward: () => void;
 }
 
 // Helper to calculate distance between two touches
@@ -550,9 +601,10 @@ function getAngle(touches: any[]) {
     return (Math.atan2(dy, dx) * 180) / Math.PI;
 }
 
-function DraggableElement({ element, isSelected, isInverted, onSelect, onDoubleTap, onDelete, onEdit, onChange }: DraggableElementProps) {
+function DraggableElement({ element, isSelected, isInverted, onSelect, onDoubleTap, onDelete, onEdit, onChange, onToggleLock, onBringForward, onSendBackward }: DraggableElementProps) {
     const pan = useRef(new Animated.ValueXY({ x: element.x, y: element.y })).current;
     const lastTap = useRef(0);
+    const isLocked = !!element.locked;
 
     const [size, setSize] = useState({ width: 0, height: 0 });
     const latest = useRef({ element, size, onChange });
@@ -568,7 +620,7 @@ function DraggableElement({ element, isSelected, isInverted, onSelect, onDoubleT
     const panResponder = useRef(
         PanResponder.create({
             onStartShouldSetPanResponder: () => true,
-            onMoveShouldSetPanResponder: () => true,
+            onMoveShouldSetPanResponder: () => !latest.current.element.locked,
             onPanResponderGrant: (evt) => {
                 onSelect(); // Bring to focus
 
@@ -589,6 +641,7 @@ function DraggableElement({ element, isSelected, isInverted, onSelect, onDoubleT
                 }
             },
             onPanResponderMove: (evt, gestureState) => {
+                if (latest.current.element.locked) return;
                 if (latest.current.element.type === 'sign') return;
                 const touches = evt.nativeEvent.touches;
 
@@ -626,7 +679,9 @@ function DraggableElement({ element, isSelected, isInverted, onSelect, onDoubleT
 
                 // If it was just a drag, save the final position
                 if (!isMultiTouch.current) {
-                    onChange(panState.current);
+                    if (!latest.current.element.locked) {
+                        onChange(panState.current);
+                    }
 
                     // Detect tap or double tap (only if not a multi-touch gesture)
                     if (Math.abs(gestureState.dx) < 5 && Math.abs(gestureState.dy) < 5) {
@@ -762,6 +817,13 @@ function DraggableElement({ element, isSelected, isInverted, onSelect, onDoubleT
         shadowRadius: 2,
     };
 
+    const smallHandleStyle: any = {
+        ...handleStyle,
+        width: 26,
+        height: 26,
+        borderRadius: 13,
+    };
+
     let calculatedFontSize = 300;
     if (isSign) {
         const lines = (element.content || ' ').split('\n');
@@ -784,11 +846,11 @@ function DraggableElement({ element, isSelected, isInverted, onSelect, onDoubleT
                 styles.elementWrapper,
                 transformStyle,
                 { zIndex: element.zIndex, padding: isSign ? 20 : 15 },
-                isSign && { width: '100%', height: '100%', top: 0, left: 0 }
+                isSign && { width: '100%', height: '100%', top: 0, left: 0 },
             ]}
             onLayout={(e) => setSize({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
         >
-            <View style={[isSelected && styles.elementSelected, isSign && { flex: 1, width: '100%', height: '100%' }]}>
+            <View style={[isSelected && styles.elementSelected, isLocked && isSelected && styles.elementLocked, isSign && { flex: 1, width: '100%', height: '100%' }]}>
                 {isText ? (
                     isSign ? (
                         <View style={{ flex: 1, width: '100%', justifyContent: 'center', alignItems: 'center' }}>
@@ -818,20 +880,29 @@ function DraggableElement({ element, isSelected, isInverted, onSelect, onDoubleT
                 )}
             </View>
 
+            {/* Persistent lock badge (visible even when deselected) */}
+            {isLocked && !isSelected && (
+                <View style={styles.lockBadge} pointerEvents="none">
+                    <Text style={styles.lockBadgeText}>🔒</Text>
+                </View>
+            )}
+
             {isSelected && (
                 <>
-                    {/* Top-Right: Delete (X) */}
-                    <TouchableOpacity
-                        style={[handleStyle, { top: 0, right: 0 }]}
-                        onPress={onDelete}
-                        delayPressIn={0}
-                        hitSlop={{ top: 10, left: 10, right: 10, bottom: 10 }}
-                    >
-                        <Text style={{ color: 'red', fontWeight: 'bold', fontSize: 16, lineHeight: 18 }}>✕</Text>
-                    </TouchableOpacity>
+                    {/* Top-Right: Delete (X) — hidden when locked */}
+                    {!isLocked && (
+                        <TouchableOpacity
+                            style={[handleStyle, { top: 0, right: 0 }]}
+                            onPress={onDelete}
+                            delayPressIn={0}
+                            hitSlop={{ top: 10, left: 10, right: 10, bottom: 10 }}
+                        >
+                            <Text style={{ color: 'red', fontWeight: 'bold', fontSize: 16, lineHeight: 18 }}>✕</Text>
+                        </TouchableOpacity>
+                    )}
 
-                    {/* Bottom-Right: Scale (↔) - Disabled for sign */}
-                    {!isSign && (
+                    {/* Bottom-Right: Scale (↔) - Hidden for sign and locked */}
+                    {!isSign && !isLocked && (
                         <View
                             style={[handleStyle, { bottom: 0, right: 0 }]}
                             {...scaleResponder.panHandlers}
@@ -840,8 +911,8 @@ function DraggableElement({ element, isSelected, isInverted, onSelect, onDoubleT
                         </View>
                     )}
 
-                    {/* Top-Left: Rotate (↻) - Disabled for sign */}
-                    {!isSign && (
+                    {/* Top-Left: Rotate (↻) - Hidden for sign and locked */}
+                    {!isSign && !isLocked && (
                         <View
                             style={[handleStyle, { top: 0, left: 0 }]}
                             {...rotateResponder.panHandlers}
@@ -850,7 +921,7 @@ function DraggableElement({ element, isSelected, isInverted, onSelect, onDoubleT
                         </View>
                     )}
 
-                    {/* Bottom-Left: Edit Text (✎) */}
+                    {/* Bottom-Left: Edit Text (✎) — always available for text */}
                     {isText && (
                         <TouchableOpacity
                             style={[handleStyle, { bottom: 0, left: 0 }]}
@@ -861,6 +932,34 @@ function DraggableElement({ element, isSelected, isInverted, onSelect, onDoubleT
                             <Text style={{ color: '#007AFF', fontSize: 18, lineHeight: 22 }}>✎</Text>
                         </TouchableOpacity>
                     )}
+
+                    {/* Top-Center: Lock Toggle (🔒/🔓) */}
+                    <TouchableOpacity
+                        style={[handleStyle, styles.lockHandle]}
+                        onPress={onToggleLock}
+                        delayPressIn={0}
+                        hitSlop={{ top: 10, left: 10, right: 10, bottom: 10 }}
+                    >
+                        <Text style={{ fontSize: 14, lineHeight: 16 }}>{isLocked ? '🔒' : '🔓'}</Text>
+                    </TouchableOpacity>
+
+                    {/* Right edge: Layer controls (▲ ▼) */}
+                    <TouchableOpacity
+                        style={[smallHandleStyle, styles.layerUpHandle]}
+                        onPress={onBringForward}
+                        delayPressIn={0}
+                        hitSlop={{ top: 8, left: 8, right: 8, bottom: 4 }}
+                    >
+                        <Text style={{ color: '#007AFF', fontSize: 13, fontWeight: 'bold', lineHeight: 15 }}>▲</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[smallHandleStyle, styles.layerDownHandle]}
+                        onPress={onSendBackward}
+                        delayPressIn={0}
+                        hitSlop={{ top: 4, left: 8, right: 8, bottom: 8 }}
+                    >
+                        <Text style={{ color: '#007AFF', fontSize: 13, fontWeight: 'bold', lineHeight: 15 }}>▼</Text>
+                    </TouchableOpacity>
                 </>
             )}
         </Animated.View>
@@ -961,6 +1060,45 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: '#007AFF',
         borderStyle: 'dashed',
+    },
+    elementLocked: {
+        borderColor: '#FF9500',
+        borderStyle: 'solid',
+    },
+    lockBadge: {
+        position: 'absolute',
+        top: 2,
+        left: '50%',
+        marginLeft: -12,
+        backgroundColor: 'rgba(255, 149, 0, 0.7)',
+        borderRadius: 10,
+        width: 24,
+        height: 24,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    lockBadgeText: {
+        fontSize: 12,
+        lineHeight: 14,
+    },
+    lockHandle: {
+        top: -15,
+        alignSelf: 'center',
+        left: '50%',
+        marginLeft: -15,
+        borderColor: '#FF9500',
+    },
+    layerUpHandle: {
+        right: -13,
+        top: '33%',
+        marginTop: -13,
+        borderColor: '#007AFF',
+    },
+    layerDownHandle: {
+        right: -13,
+        top: '66%',
+        marginTop: -13,
+        borderColor: '#007AFF',
     },
     elementText: {
         color: '#000',
