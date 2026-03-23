@@ -2,12 +2,12 @@
   "expo": {
     "name": "Send to X4",
     "slug": "send-to-x4",
-    "version": "1.1.21",
+    "version": "1.1.22",
     "ios": {
-      "buildNumber": "32"
+      "buildNumber": "33"
     },
     "android": {
-      "versionCode": 32
+      "versionCode": 33
     }
   }
 }
